@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/amine7536/previo/internal/config"
+	"github.com/pixelfactoryio/previo/internal/config"
 )
 
 func setEnv(t *testing.T, vars map[string]string) {

@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/amine7536/previo/internal/config"
-	"github.com/amine7536/previo/internal/github"
-	"github.com/amine7536/previo/internal/server"
+	"github.com/pixelfactoryio/previo/internal/config"
+	"github.com/pixelfactoryio/previo/internal/github"
+	"github.com/pixelfactoryio/previo/internal/server"
 )
 
 func main() {

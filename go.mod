@@ -1,4 +1,4 @@
-module github.com/amine7536/previo
+module github.com/pixelfactoryio/previo
 
 go 1.25.0
 

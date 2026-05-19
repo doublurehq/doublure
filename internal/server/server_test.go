@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/amine7536/previo/internal/server"
-	"github.com/amine7536/previo/internal/server/mocks"
+	"github.com/pixelfactoryio/previo/internal/server"
+	"github.com/pixelfactoryio/previo/internal/server/mocks"
 )
 
 func TestHealthz(t *testing.T) {
