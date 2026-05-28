@@ -1,5 +1,5 @@
 packages:
-  github.com/amine7536/previo/internal/server:
+  github.com/pixelfactoryio/previo/internal/server:
     config:
       dir: "internal/server/mocks"
       pkgname: "mocks"
