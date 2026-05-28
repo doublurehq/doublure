@@ -4,12 +4,12 @@ package preview
 // Order matters: BuildServiceMetadata emits entries in this exact order so the
 // resulting YAML is stable across runs.
 const (
-	MetaPRAuthor     = "pr-author"
-	MetaPRURL        = "pr-url"
-	MetaPRNumber     = "pr-number"
-	MetaCreatedAt    = "created-at"
-	MetaUpdatedAt    = "updated-at"
-	MetaVCSRefName   = "vcs.ref.name"
+	MetaPRAuthor       = "pr-author"
+	MetaPRURL          = "pr-url"
+	MetaPRNumber       = "pr-number"
+	MetaCreatedAt      = "created-at"
+	MetaUpdatedAt      = "updated-at"
+	MetaVCSRefName     = "vcs.ref.name"
 	MetaPipelineRunURL = "cicd.pipeline.run.url"
 )
 
