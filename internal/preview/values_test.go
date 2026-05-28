@@ -12,10 +12,10 @@ func sampleInputs() preview.DeployInputs {
 		HeadRef:        "feature/add-pricing",
 		CommitSha:      "abc1234567890",
 		PRAuthor:       "amine",
-		PRURL:          "https://github.com/amine7536/backend-1/pull/42",
+		PRURL:          "https://github.com/acme/backend-1/pull/42",
 		PRNumber:       "42",
 		Timestamp:      "2026-05-26T10:00:00Z",
-		WorkflowRunURL: "https://github.com/amine7536/backend-1/actions/runs/1",
+		WorkflowRunURL: "https://github.com/acme/backend-1/actions/runs/1",
 	}
 }
 

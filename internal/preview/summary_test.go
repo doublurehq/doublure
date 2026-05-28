@@ -15,15 +15,15 @@ func TestBuildSummary_PinnedAndMainTracking(t *testing.T) {
 	got := preview.BuildSummary(
 		"feature-add-pricing", vals,
 		"chore(preview): create feature-add-pricing preview",
-		"https://github.com/amine7536/akpe-gitops/commit/deadbeef",
+		"https://github.com/acme/gitops/commit/deadbeef",
 	)
 
 	mustContain := []string{
 		"## 🚀 Preview: `feature-add-pricing`",
-		"**backend-1** · 📌 [`abc12345`](https://github.com/amine7536/backend-1/commit/abc1234567890) · [PR #42](https://github.com/amine7536/backend-1/pull/42)",
+		"**backend-1** · 📌 [`abc12345`](https://github.com/acme/backend-1/commit/abc1234567890) · [PR #42](https://github.com/acme/backend-1/pull/42)",
 		"**backend-2** · 🔄 `main`",
 		"**front** · 🔄 `main`",
-		"🔗 [chore(preview): create feature-add-pricing preview](https://github.com/amine7536/akpe-gitops/commit/deadbeef)",
+		"🔗 [chore(preview): create feature-add-pricing preview](https://github.com/acme/gitops/commit/deadbeef)",
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(got, want) {

@@ -19,7 +19,7 @@ import (
 
 // PRCommentMarker is the HTML comment used as a sentinel for find-or-create
 // semantics on PR comments.
-const PRCommentMarker = "<!-- akpe-preview -->"
+const PRCommentMarker = "<!-- previo:preview -->"
 
 // MaxWriteRetries is the cap on 409-conflict retries for WritePreviewWithRetry.
 const MaxWriteRetries = 3

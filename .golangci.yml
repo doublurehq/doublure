@@ -10,7 +10,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/amine7536/previo
+        - github.com/pixelfactoryio/previo
     golines:
       max-len: 120
 

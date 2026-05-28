@@ -31,7 +31,7 @@ func newClient(t *testing.T, srv *httptest.Server) *gitops.Client {
 	c := gh.NewClient(nil)
 	c.BaseURL = u
 	c.UploadURL = u
-	return gitops.NewClient(c, "amine7536", "akpe-gitops")
+	return gitops.NewClient(c, "acme", "gitops")
 }
 
 // encodeContent returns a Repository contents response body for a single file.
@@ -55,24 +55,24 @@ func sampleInputs() preview.DeployInputs {
 		HeadRef:        "feature/add-pricing",
 		CommitSha:      "abc1234567890",
 		PRAuthor:       "amine",
-		PRURL:          "https://github.com/amine7536/backend-1/pull/42",
+		PRURL:          "https://github.com/acme/backend-1/pull/42",
 		PRNumber:       "42",
 		Timestamp:      "2026-05-26T10:00:00Z",
-		WorkflowRunURL: "https://github.com/amine7536/backend-1/actions/runs/1",
+		WorkflowRunURL: "https://github.com/acme/backend-1/actions/runs/1",
 	}
 }
 
 func TestFetchServiceCatalog(t *testing.T) {
 	const servicesYAML = `serviceRepos:
   backend-1:
-    repo: amine7536/backend-1
+    repo: acme/backend-1
   backend-2:
-    repo: amine7536/backend-2
+    repo: acme/backend-2
   front:
-    repo: amine7536/front
+    repo: acme/front
 `
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/repos/amine7536/akpe-gitops/contents/services.yaml" {
+		if r.URL.Path != "/repos/acme/gitops/contents/services.yaml" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		_, _ = io.WriteString(w, encodeContent("services.yaml", "sha-svc", servicesYAML))
@@ -101,12 +101,12 @@ func TestGetPreview_Success(t *testing.T) {
     commitSha: abc1234567890
     metadata:
       pr-author: amine
-      pr-url: https://github.com/amine7536/backend-1/pull/42
+      pr-url: https://github.com/acme/backend-1/pull/42
       pr-number: '42'
       created-at: '2026-05-26T10:00:00Z'
       updated-at: '2026-05-26T10:00:00Z'
       vcs.ref.name: feature/add-pricing
-      cicd.pipeline.run.url: https://github.com/amine7536/backend-1/actions/runs/1
+      cicd.pipeline.run.url: https://github.com/acme/backend-1/actions/runs/1
   - name: backend-2
   - name: front
 `
@@ -159,7 +159,7 @@ func TestWritePreview_Create(t *testing.T) {
 			t.Errorf("create request must not include sha; got body: %s", body)
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = io.WriteString(w, `{"content":{"sha":"new-blob"},"commit":{"html_url":"https://github.com/amine7536/akpe-gitops/commit/abc"}}`)
+		_, _ = io.WriteString(w, `{"content":{"sha":"new-blob"},"commit":{"html_url":"https://github.com/acme/gitops/commit/abc"}}`)
 	}))
 	defer srv.Close()
 
@@ -174,7 +174,7 @@ func TestWritePreview_Create(t *testing.T) {
 	if gotMethod != http.MethodPut {
 		t.Errorf("method = %s, want PUT", gotMethod)
 	}
-	if commitURL != "https://github.com/amine7536/akpe-gitops/commit/abc" {
+	if commitURL != "https://github.com/acme/gitops/commit/abc" {
 		t.Errorf("commitURL = %q", commitURL)
 	}
 }
@@ -236,7 +236,7 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
     commitSha: oldsha
     metadata:
       pr-author: amine
-      pr-url: https://github.com/amine7536/backend-1/pull/42
+      pr-url: https://github.com/acme/backend-1/pull/42
       pr-number: '42'
       created-at: '2026-05-26T09:00:00Z'
       updated-at: '2026-05-26T09:00:00Z'
@@ -249,7 +249,7 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
     commitSha: oldsha
     metadata:
       pr-author: amine
-      pr-url: https://github.com/amine7536/backend-1/pull/42
+      pr-url: https://github.com/acme/backend-1/pull/42
       pr-number: '42'
       created-at: '2026-05-26T09:00:00Z'
       updated-at: '2026-05-26T09:30:00Z'
@@ -323,20 +323,20 @@ func TestFanOutPRComments_UpdateAndCreate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/issues/42/comments"):
-			_, _ = io.WriteString(w, `[{"id": 999, "body": "<!-- akpe-preview -->\n old body"}]`)
+			_, _ = io.WriteString(w, `[{"id": 999, "body": "<!-- previo:preview -->\n old body"}]`)
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/issues/7/comments"):
 			_, _ = io.WriteString(w, `[{"id": 111, "body": "unrelated"}]`)
 		case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/issues/comments/999"):
 			sawEdit.Store(true)
 			body, _ := io.ReadAll(r.Body)
-			if !strings.Contains(string(body), "<!-- akpe-preview -->") {
+			if !strings.Contains(string(body), "<!-- previo:preview -->") {
 				t.Errorf("PATCH body missing marker: %s", body)
 			}
 			_, _ = io.WriteString(w, `{"id":999}`)
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/issues/7/comments"):
 			sawCreate.Store(true)
 			body, _ := io.ReadAll(r.Body)
-			if !strings.Contains(string(body), "<!-- akpe-preview -->") {
+			if !strings.Contains(string(body), "<!-- previo:preview -->") {
 				t.Errorf("POST body missing marker: %s", body)
 			}
 			w.WriteHeader(http.StatusCreated)
@@ -352,7 +352,7 @@ func TestFanOutPRComments_UpdateAndCreate(t *testing.T) {
 	in1 := sampleInputs()
 	in2 := sampleInputs()
 	in2.ServiceName = "backend-2"
-	in2.PRURL = "https://github.com/amine7536/backend-2/pull/7"
+	in2.PRURL = "https://github.com/acme/backend-2/pull/7"
 	in2.PRNumber = "7"
 
 	vals := preview.PreviewValues{Services: []preview.ServiceEntry{
