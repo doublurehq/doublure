@@ -1,0 +1,8 @@
+packages:
+  github.com/doublurehq/doublure/internal/server:
+    config:
+      dir: "internal/server/mocks"
+      pkgname: "mocks"
+      filename: "mock_webhook_validator.go"
+    interfaces:
+      WebhookValidator:
