@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/pixelfactoryio/previo/internal/config"
 	"github.com/pixelfactoryio/previo/internal/github"
+	"github.com/pixelfactoryio/previo/internal/gitops"
 	"github.com/pixelfactoryio/previo/internal/server"
 )
 
@@ -51,7 +53,14 @@ func serveCmd() *cobra.Command {
 				return fmt.Errorf("creating github app: %w", err)
 			}
 
-			srv := server.NewServer(app)
+			owner, repo, ok := strings.Cut(cfg.GitOpsRepo, "/")
+			if !ok || owner == "" || repo == "" {
+				return fmt.Errorf("GITOPS_REPO must be 'owner/repo', got %q", cfg.GitOpsRepo)
+			}
+			ghClient := app.ClientForInstallation(cfg.InstallationID)
+			gitopsClient := gitops.NewClient(ghClient, owner, repo)
+
+			srv := server.NewServer(app, gitopsClient, cfg.DeployToken)
 			httpSrv := &http.Server{
 				Addr:              cfg.ListenAddr,
 				Handler:           srv.Handler(),

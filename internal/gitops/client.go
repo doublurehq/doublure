@@ -177,24 +177,41 @@ func statusCode(err error) int {
 	return 0
 }
 
-// WritePreviewWithRetry composes Get → UpdatePreviewValues → Write and retries
-// up to MaxWriteRetries times on 409 conflicts (someone else updated the file
-// between our read and write). On every retry the latest file is re-fetched
-// and the deploy is re-applied via preview.UpdatePreviewValues, so the merge
-// is always against the freshest baseline.
+// WritePreviewWithRetry composes Get → (Build|Update)PreviewValues → Write and
+// retries up to MaxWriteRetries times on 409 conflicts (someone else updated
+// the file between our read and write). On every retry the latest file is
+// re-fetched and the deploy is re-applied via preview.UpdatePreviewValues, so
+// the merge is always against the freshest baseline.
 //
-// If the file does not yet exist, vals is written as-is (no merge necessary).
+// On a fresh create the full catalog is materialized via BuildPreviewValues so
+// the resulting values.yaml lists every service (the triggering one pinned to
+// commitSha, the rest tracking main).
+//
+// WriteResult is the outcome of a successful WritePreviewWithRetry call.
+// CommitMessage is whichever of {createMessage, updateMessage} was actually
+// used for the gitops commit, so callers can label PR summaries consistently
+// with what GitHub shows when the user clicks through to the commit.
+type WriteResult struct {
+	Values        preview.PreviewValues
+	CommitURL     string
+	CommitMessage string
+}
+
+// Returns a WriteResult capturing the final PreviewValues that was written,
+// the gitops commit URL, and the commit message used — callers (e.g. the
+// deploy handler) can render PR summaries without re-fetching.
 func (c *Client) WritePreviewWithRetry(
 	ctx context.Context,
 	slug string,
+	catalog []string,
 	serviceName, commitSha string,
 	inputs preview.DeployInputs,
 	createMessage, updateMessage string,
-) (string, error) {
+) (*WriteResult, error) {
 	existing, sha, err := c.GetPreview(ctx, slug)
 	exists := err == nil
 	if err != nil && !errors.Is(err, ErrNotFound) {
-		return "", err
+		return nil, err
 	}
 
 	var vals preview.PreviewValues
@@ -203,37 +220,28 @@ func (c *Client) WritePreviewWithRetry(
 		vals = preview.UpdatePreviewValues(*existing, serviceName, commitSha, inputs)
 		message = updateMessage
 	} else {
-		// Fresh preview — caller must supply the full catalog separately via
-		// BuildPreviewValues before calling this method. To keep this method
-		// self-contained when no catalog is available, fall back to a single-
-		// entry doc; deploy.go will normally call BuildPreviewValues itself.
-		vals = preview.PreviewValues{Services: []preview.ServiceEntry{{
-			Name:      serviceName,
-			CommitSha: commitSha,
-			Metadata:  preview.BuildServiceMetadata(inputs),
-		}}}
+		vals = preview.BuildPreviewValues(serviceName, commitSha, catalog, inputs)
 		message = createMessage
 	}
 
 	for attempt := 1; attempt <= MaxWriteRetries; attempt++ {
 		commitURL, writeErr := c.WritePreview(ctx, slug, vals, sha, message)
 		if writeErr == nil {
-			return commitURL, nil
+			return &WriteResult{Values: vals, CommitURL: commitURL, CommitMessage: message}, nil
 		}
 		if statusCode(writeErr) != http.StatusConflict {
-			return "", writeErr
+			return nil, writeErr
 		}
 		// 409 — re-fetch, re-merge, retry.
 		latest, latestSHA, getErr := c.GetPreview(ctx, slug)
 		if getErr != nil {
-			return "", fmt.Errorf("conflict re-fetch: %w", getErr)
+			return nil, fmt.Errorf("conflict re-fetch: %w", getErr)
 		}
 		sha = latestSHA
-		exists = true
 		vals = preview.UpdatePreviewValues(*latest, serviceName, commitSha, inputs)
 		message = updateMessage
 	}
-	return "", fmt.Errorf("write %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)
+	return nil, fmt.Errorf("write %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)
 }
 
 // prURLPattern extracts (owner, repo, prNumber) from a github.com PR URL.
