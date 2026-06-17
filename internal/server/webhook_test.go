@@ -184,7 +184,7 @@ func TestWebhookDispatch(t *testing.T) {
 }
 
 func TestWebhookBadSignature(t *testing.T) {
-	srv, _ := newWebhookServer(t)
+	srv, records := newWebhookServer(t)
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/github", bytes.NewReader([]byte(`{"zen":"x"}`)))
 	req.Header.Set("X-Github-Event", "ping")
 	req.Header.Set("X-Hub-Signature-256", "sha256=deadbeef")
@@ -193,6 +193,16 @@ func TestWebhookBadSignature(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+	r, ok := findRecord(records(), "webhook signature rejected")
+	if !ok {
+		t.Fatal("expected 'webhook signature rejected' WARN log")
+	}
+	if r.Level != slog.LevelWarn {
+		t.Errorf("level = %v, want WARN", r.Level)
+	}
+	if got := recordAttrs(r)["event"].String(); got != "ping" {
+		t.Errorf("event attr = %q, want ping", got)
 	}
 }
 

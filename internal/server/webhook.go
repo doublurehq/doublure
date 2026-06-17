@@ -15,14 +15,21 @@ import (
 // would just make GitHub retry the same poison delivery. Parse/dispatch
 // failures are logged and swallowed.
 func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
+	eventType := r.Header.Get("X-Github-Event")
+	ctx := r.Context()
+
 	payload, err := s.webhook.ValidateWebhook(r)
 	if err != nil {
+		// A rejected delivery means a misconfigured secret or someone probing
+		// the public endpoint with forged requests — worth surfacing. Log the
+		// source and event type only; never the (untrusted) payload.
+		slog.WarnContext(ctx, "webhook signature rejected",
+			slog.String("event", eventType),
+			slog.String("remote_addr", r.RemoteAddr),
+		)
 		http.Error(w, "invalid signature", http.StatusUnauthorized)
 		return
 	}
-
-	eventType := r.Header.Get("X-Github-Event")
-	ctx := r.Context()
 
 	// Backstop: go-github event structs are pointer-heavy; a handler that
 	// dereferences a missing optional field would panic and, without recovery,
