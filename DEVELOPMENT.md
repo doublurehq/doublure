@@ -112,7 +112,7 @@ If `make dev-bootstrap` doesn't work in your environment, create the App by hand
    - **Webhook URL**: `<your-tunnel-url>/webhooks/github`
    - **Webhook secret**: `openssl rand -hex 32` — save the value
    - **Repository permissions**: Contents R/W, Pull requests W, Metadata R
-   - **Subscribe to events**: `installation`, `installation_repositories`, `pull_request`
+   - **Subscribe to events**: `pull_request` (installation / installation_repositories fire automatically — do not subscribe to them explicitly)
    - **Where can this be installed?**: Only on this account
 2. Click **Create GitHub App**. Note the **App ID** at the top of the page.
 3. Scroll to **Private keys** → **Generate a private key**. Move the downloaded `.pem` to `services/previo/dev.private-key.pem`.

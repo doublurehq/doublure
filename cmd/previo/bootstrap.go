@@ -134,11 +134,11 @@ func runBootstrap(ctx context.Context, stdin io.Reader, stdout io.Writer, opts b
 			"pull_requests": "write",
 			"metadata":      "read",
 		},
-		"default_events": []string{
-			"installation",
-			"installation_repositories",
-			"pull_request",
-		},
+		// `installation` and `installation_repositories` are App-level events
+		// delivered automatically regardless of subscriptions — including them
+		// here makes GitHub reject the manifest. Only repository-scoped events
+		// belong in default_events.
+		"default_events": []string{"pull_request"},
 	}
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
@@ -230,7 +230,7 @@ func printPlan(w io.Writer, opts bootstrapOpts, webhookURL string) {
 		fmt.Fprintln(w, "       owner:       your personal GitHub account")
 	}
 	fmt.Fprintln(w, "       permissions: contents:write, pull_requests:write, metadata:read")
-	fmt.Fprintln(w, "       events:      installation, installation_repositories, pull_request")
+	fmt.Fprintln(w, "       events:      pull_request (installation events fire automatically)")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  2. Open a browser tab to github.com/settings/apps/new and submit the manifest")
 	fmt.Fprintln(w, "     (one click on \"Create GitHub App\" required from you)")
