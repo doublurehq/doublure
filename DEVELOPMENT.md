@@ -5,7 +5,7 @@ Local setup for previo: ngrok tunnel, GitHub App, env, smoke test.
 ## Prerequisites
 
 - Go 1.25+
-- `ngrok` (or smee.io — see Appendix B)
+- `ngrok`
 - GitHub account with admin access to the gitops repo
 
 ## Quickstart
@@ -96,17 +96,7 @@ GitHub App settings → **Advanced** → **Recent Deliveries** → pick any → 
 | `previo verify-app` shows `Installations (0)` | App created but not installed anywhere | Open the App settings, click **Install App**, pick repos |
 | `previo serve` fails with `PREVIO_DEPLOY_TOKEN is required` | `.env` not sourced | `source .env` first, or use `make dev-serve` which sources for you |
 
-## Appendix B — using smee.io instead of ngrok
-
-ngrok's free-tier URL changes per restart; smee.io gives you a stable channel URL with zero account setup, at the cost of no local request inspector.
-
-```bash
-npx smee-client --url https://smee.io/<your-channel> --target http://localhost:8080/webhooks/github
-```
-
-`bootstrap-app` currently reads ngrok specifically. With smee you'll need to create the App manually (Appendix C), supplying the smee channel URL as the webhook URL.
-
-## Appendix C — manual App creation (manifest-flow fallback)
+## Appendix B — manual App creation (manifest-flow fallback)
 
 If `make dev-bootstrap` doesn't work in your environment, create the App by hand:
 
