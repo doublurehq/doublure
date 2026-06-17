@@ -15,6 +15,7 @@ type Config struct {
 	InstallationID int64
 	GitOpsRepo     string
 	ListenAddr     string
+	DeployToken    string
 }
 
 // Load reads configuration from environment variables and validates it.
@@ -44,6 +45,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	deployToken, err := requireEnv("PREVIO_DEPLOY_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+
 	listenAddr := os.Getenv("LISTEN_ADDR")
 	if listenAddr == "" {
 		listenAddr = ":8080"
@@ -56,6 +62,7 @@ func Load() (*Config, error) {
 		InstallationID: installationID,
 		GitOpsRepo:     gitOpsRepo,
 		ListenAddr:     listenAddr,
+		DeployToken:    deployToken,
 	}, nil
 }
 

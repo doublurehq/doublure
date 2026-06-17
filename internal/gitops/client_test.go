@@ -294,8 +294,9 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
 	in.CommitSha = "newsha"
 	in.Timestamp = "2026-05-26T10:00:00Z"
 
-	commitURL, err := c.WritePreviewWithRetry(
+	result, err := c.WritePreviewWithRetry(
 		context.Background(), "slug",
+		[]string{"backend-1", "backend-2"},
 		"backend-1", "newsha", in,
 		"chore(preview): create slug preview",
 		"chore(preview): update backend-1 in slug",
@@ -309,8 +310,80 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
 	if getAttempts.Load() != 2 {
 		t.Errorf("get attempts = %d, want 2 (initial + post-conflict)", getAttempts.Load())
 	}
-	if !strings.HasSuffix(commitURL, "/winner") {
-		t.Errorf("commitURL = %q", commitURL)
+	if !strings.HasSuffix(result.CommitURL, "/winner") {
+		t.Errorf("commitURL = %q", result.CommitURL)
+	}
+	if result.CommitMessage != "chore(preview): update backend-1 in slug" {
+		t.Errorf("commitMessage = %q, want update form", result.CommitMessage)
+	}
+	if len(result.Values.Services) != 2 {
+		t.Fatalf("returned vals = %+v, want 2 services", result.Values)
+	}
+	if result.Values.Services[0].CommitSha != "newsha" {
+		t.Errorf("backend-1 commitSha = %q, want newsha", result.Values.Services[0].CommitSha)
+	}
+	if result.Values.Services[1].CommitSha != "" {
+		t.Errorf("backend-2 commitSha = %q, want empty (main-tracking)", result.Values.Services[1].CommitSha)
+	}
+}
+
+func TestWritePreviewWithRetry_FreshCreateUsesCatalog(t *testing.T) {
+	var capturedBody atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"message":"Not Found"}`)
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			var req map[string]any
+			_ = json.Unmarshal(body, &req)
+			if _, hasSHA := req["sha"]; hasSHA {
+				t.Errorf("fresh create must not include sha; body: %s", body)
+			}
+			decoded, _ := base64.StdEncoding.DecodeString(req["content"].(string))
+			capturedBody.Store(string(decoded))
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `{"commit":{"html_url":"https://github.com/x/y/commit/fresh"}}`)
+		default:
+			t.Errorf("unexpected method %s", r.Method)
+		}
+	}))
+	defer srv.Close()
+
+	c := newClient(t, srv)
+	result, err := c.WritePreviewWithRetry(
+		context.Background(), "fresh-slug",
+		[]string{"backend-1", "backend-2", "front"},
+		"backend-1", "abc1234567890", sampleInputs(),
+		"chore(preview): create fresh-slug preview",
+		"chore(preview): update backend-1 in fresh-slug",
+	)
+	if err != nil {
+		t.Fatalf("WritePreviewWithRetry: %v", err)
+	}
+	if !strings.HasSuffix(result.CommitURL, "/fresh") {
+		t.Errorf("commitURL = %q", result.CommitURL)
+	}
+	if result.CommitMessage != "chore(preview): create fresh-slug preview" {
+		t.Errorf("commitMessage = %q, want create form", result.CommitMessage)
+	}
+	if len(result.Values.Services) != 3 {
+		t.Fatalf("vals = %+v, want 3 services (full catalog)", result.Values)
+	}
+	if result.Values.Services[0].Name != "backend-1" || result.Values.Services[0].CommitSha != "abc1234567890" {
+		t.Errorf("triggering service = %+v, want backend-1/abc1234567890", result.Values.Services[0])
+	}
+	for _, svc := range result.Values.Services[1:] {
+		if svc.CommitSha != "" || svc.Metadata != nil {
+			t.Errorf("main-tracking entry %q polluted: %+v", svc.Name, svc)
+		}
+	}
+	written, _ := capturedBody.Load().(string)
+	for _, expect := range []string{"name: backend-1", "name: backend-2", "name: front"} {
+		if !strings.Contains(written, expect) {
+			t.Errorf("written body missing %q:\n%s", expect, written)
+		}
 	}
 }
 

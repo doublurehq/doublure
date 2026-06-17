@@ -14,15 +14,21 @@ type WebhookValidator interface {
 }
 
 type Server struct {
-	webhook WebhookValidator
-	router  chi.Router
+	webhook     WebhookValidator
+	gitops      gitopsAPI
+	deployToken string
+	router      chi.Router
 }
 
-func NewServer(webhook WebhookValidator) *Server {
-	s := &Server{webhook: webhook}
+func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string) *Server {
+	s := &Server{webhook: webhook, gitops: gitops, deployToken: deployToken}
 	r := chi.NewRouter()
 	r.Get("/healthz", s.handleHealthz)
 	r.Post("/webhooks/github", s.handleWebhook)
+	r.Route("/v1", func(r chi.Router) {
+		r.Use(requireBearer(deployToken))
+		r.Post("/deploy", s.handleDeploy)
+	})
 	s.router = r
 	return s
 }

@@ -15,7 +15,7 @@ import (
 
 func TestHealthz(t *testing.T) {
 	m := mocks.NewMockWebhookValidator(t)
-	srv := server.NewServer(m)
+	srv := server.NewServer(m, nil, "test-deploy-token")
 
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
@@ -32,7 +32,7 @@ func TestWebhookValidSignature(t *testing.T) {
 	m.EXPECT().ValidateWebhook(mock.AnythingOfType("*http.Request")).
 		Return([]byte(`{"action":"opened"}`), nil)
 
-	srv := server.NewServer(m)
+	srv := server.NewServer(m, nil, "test-deploy-token")
 
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/github", strings.NewReader(`{"action":"opened"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -50,7 +50,7 @@ func TestWebhookInvalidSignature(t *testing.T) {
 	m.EXPECT().ValidateWebhook(mock.AnythingOfType("*http.Request")).
 		Return(nil, errors.New("invalid signature"))
 
-	srv := server.NewServer(m)
+	srv := server.NewServer(m, nil, "test-deploy-token")
 
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/github", strings.NewReader(`{"action":"opened"}`))
 	req.Header.Set("Content-Type", "application/json")

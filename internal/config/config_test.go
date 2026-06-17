@@ -22,6 +22,7 @@ func validEnv() map[string]string {
 		"GITHUB_WEBHOOK_SECRET":  "secret",
 		"GITHUB_INSTALLATION_ID": "67890",
 		"GITOPS_REPO":            "org/gitops-repo",
+		"PREVIO_DEPLOY_TOKEN":    "deploy-secret",
 	}
 }
 
@@ -91,8 +92,22 @@ func TestLoad_Valid(t *testing.T) {
 	if cfg.GitOpsRepo != "org/gitops-repo" {
 		t.Errorf("GitOpsRepo = %q, want %q", cfg.GitOpsRepo, "org/gitops-repo")
 	}
+	if cfg.DeployToken != "deploy-secret" {
+		t.Errorf("DeployToken = %q, want %q", cfg.DeployToken, "deploy-secret")
+	}
 	if cfg.ListenAddr != ":8080" {
 		t.Errorf("ListenAddr = %q, want %q", cfg.ListenAddr, ":8080")
+	}
+}
+
+func TestLoad_MissingDeployToken(t *testing.T) {
+	env := validEnv()
+	delete(env, "PREVIO_DEPLOY_TOKEN")
+	setEnv(t, env)
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected error for missing PREVIO_DEPLOY_TOKEN")
 	}
 }
 
