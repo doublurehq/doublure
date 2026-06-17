@@ -6,6 +6,7 @@ Local setup for previo: ngrok tunnel, GitHub App, env, smoke test.
 
 - Go 1.25+
 - `ngrok`
+- `gh` CLI, authenticated (`gh auth status`)
 - GitHub account with admin access to the gitops repo
 
 ## Quickstart
@@ -58,34 +59,39 @@ GITOPS_REPO=myorg/my-gitops make dev-bootstrap
 
 ## Smoke the deploy endpoint
 
-With the server running:
+With the server running, paste this verbatim — `$ORG` resolves to your GitHub login via `gh`:
 
 ```bash
 source .env
+ORG=$(gh api /user --jq .login)
+
 curl -s -X POST http://localhost:8080/v1/deploy \
   -H "Authorization: Bearer $PREVIO_DEPLOY_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "service": "backend-1",
-    "head_ref": "feature/smoke-test",
-    "commit_sha": "0000000000000000000000000000000000000001",
-    "pr_author": "amine",
-    "pr_url": "https://github.com/<your-org>/backend-1/pull/1",
-    "pr_number": "1",
-    "workflow_run_url": "https://github.com/<your-org>/backend-1/actions/runs/1"
-  }' | jq
+  -d @- <<EOF | jq
+{
+  "service": "backend-1",
+  "head_ref": "feature/smoke-test",
+  "commit_sha": "0000000000000000000000000000000000000001",
+  "pr_author": "$ORG",
+  "pr_url": "https://github.com/$ORG/backend-1/pull/1",
+  "pr_number": "1",
+  "workflow_run_url": "https://github.com/$ORG/backend-1/actions/runs/1"
+}
+EOF
 ```
 
-Expected:
+The deploy itself is what's being smoked — a successful response means the gitops commit landed. Expect a `warnings` entry about PR-comment fan-out failing: the smoke uses a fake `pull/1` URL that doesn't exist, so the comment POST gets a 404. That's the test's design (best-effort fan-out, load-bearing write).
 
 ```json
 {
   "preview_slug": "feature-smoke-test",
-  "gitops_commit_url": "https://github.com/<your-org>/<your-gitops-repo>/commit/<sha>"
+  "gitops_commit_url": "https://github.com/.../commit/...",
+  "warnings": ["service backend-1 ...: 404 Not Found"]
 }
 ```
 
-The commit lands on the gitops repo's `main` branch.
+Open the gitops repo on GitHub to confirm the commit landed on `main`.
 
 ## Verify webhook plumbing
 
