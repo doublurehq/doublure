@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -44,19 +45,26 @@ func bootstrapAppCmd() *cobra.Command {
 		envPath    string
 		pemPath    string
 		owner      string
+		assumeYes  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "bootstrap-app",
 		Short: "Create a dev GitHub App via manifest flow and write .env + PEM",
+		Long: `Create a development GitHub App through the manifest flow.
+
+Prints a preflight plan describing what will be created, what files will
+be written, and what will be overwritten — then prompts for confirmation
+before doing anything (skip with --yes).`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := context.WithTimeout(cmd.Context(), manifestTimeout)
 			defer cancel()
-			return runBootstrap(ctx, cmd.OutOrStdout(), bootstrapOpts{
+			return runBootstrap(ctx, cmd.InOrStdin(), cmd.OutOrStdout(), bootstrapOpts{
 				appName:    appName,
 				gitopsRepo: gitopsRepo,
 				envPath:    envPath,
 				pemPath:    pemPath,
 				owner:      owner,
+				assumeYes:  assumeYes,
 			})
 		},
 	}
@@ -66,6 +74,7 @@ func bootstrapAppCmd() *cobra.Command {
 	cmd.Flags().StringVar(&envPath, "env-file", ".env", "Path to write the .env file")
 	cmd.Flags().StringVar(&pemPath, "pem-file", "dev.private-key.pem", "Path to write the App private key")
 	cmd.Flags().StringVar(&owner, "owner", "", "Org login to install the App under (empty = personal account)")
+	cmd.Flags().BoolVarP(&assumeYes, "yes", "y", false, "Skip the confirmation prompt")
 	return cmd
 }
 
@@ -75,14 +84,27 @@ type bootstrapOpts struct {
 	envPath    string
 	pemPath    string
 	owner      string
+	assumeYes  bool
 }
 
-func runBootstrap(ctx context.Context, stdout io.Writer, opts bootstrapOpts) error {
+func runBootstrap(ctx context.Context, stdin io.Reader, stdout io.Writer, opts bootstrapOpts) error {
 	webhookURL, err := readNgrokTunnel()
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "Using webhook URL: %s/webhooks/github\n", webhookURL)
+
+	printPlan(stdout, opts, webhookURL)
+	if !opts.assumeYes {
+		ok, confirmErr := confirm(stdin, stdout)
+		if confirmErr != nil {
+			return confirmErr
+		}
+		if !ok {
+			fmt.Fprintln(stdout, "Aborted.")
+			return nil
+		}
+	}
+	fmt.Fprintln(stdout)
 
 	state, err := randomHex(16)
 	if err != nil {
@@ -190,6 +212,60 @@ func runBootstrap(ctx context.Context, stdout io.Writer, opts bootstrapOpts) err
 	fmt.Fprintln(stdout, "\nAfter install, paste the installation ID into .env (GITHUB_INSTALLATION_ID),")
 	fmt.Fprintln(stdout, "then run `previo verify-app` to confirm.")
 	return nil
+}
+
+// printPlan emits a preflight summary describing every state change the
+// command is about to make: the App being created, the URL it points at, the
+// files that will be written, and whether any of them will be overwritten.
+// Reads cleanly in a terminal without color so it's safe in any environment.
+func printPlan(w io.Writer, opts bootstrapOpts, webhookURL string) {
+	fmt.Fprintln(w, "Preflight — `previo bootstrap-app` will:")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  1. Create a new GitHub App")
+	fmt.Fprintf(w, "       name:        %s\n", opts.appName)
+	fmt.Fprintf(w, "       webhook URL: %s/webhooks/github\n", webhookURL)
+	if opts.owner != "" {
+		fmt.Fprintf(w, "       owner:       %s (organization)\n", opts.owner)
+	} else {
+		fmt.Fprintln(w, "       owner:       your personal GitHub account")
+	}
+	fmt.Fprintln(w, "       permissions: contents:write, pull_requests:write, metadata:read")
+	fmt.Fprintln(w, "       events:      installation, installation_repositories, pull_request")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  2. Open a browser tab to github.com/settings/apps/new and submit the manifest")
+	fmt.Fprintln(w, "     (one click on \"Create GitHub App\" required from you)")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  3. Write files locally (mode 0600):")
+	fmt.Fprintf(w, "       %s   %s\n", opts.pemPath, overwriteNote(opts.pemPath))
+	fmt.Fprintf(w, "       %s   %s\n", opts.envPath, overwriteNote(opts.envPath))
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  4. Open the App install page in your browser so you can attach it to repos")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Nothing is sent to GitHub before step 2. Nothing is written to disk before step 3.")
+}
+
+// overwriteNote returns a parenthetical warning if path already exists.
+func overwriteNote(path string) string {
+	if _, err := os.Stat(path); err == nil {
+		return "(will overwrite existing file)"
+	}
+	return "(new file)"
+}
+
+// confirm prompts the user for y/N and returns true only on an explicit
+// "y" or "yes" (case-insensitive). Anything else — including just hitting
+// enter — is treated as a no.
+func confirm(in io.Reader, w io.Writer) (bool, error) {
+	fmt.Fprint(w, "\nProceed? [y/N] ")
+	scanner := bufio.NewScanner(in)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return false, fmt.Errorf("reading confirmation: %w", err)
+		}
+		return false, nil
+	}
+	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
+	return answer == "y" || answer == "yes", nil
 }
 
 // bootstrapMux serves /start (renders the self-submitting manifest form) and

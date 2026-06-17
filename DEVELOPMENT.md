@@ -16,7 +16,7 @@ ngrok http 8080
 
 # Terminal 2 — from services/previo/
 cd services/previo
-make dev-bootstrap         # creates the GitHub App, writes .env + dev.private-key.pem
+make dev-bootstrap         # shows a preflight plan, then (on y) creates the App + writes .env + PEM
 # (browser opens; click "Create GitHub App", then "Install" on the repos you want)
 # Paste the installation ID from the install URL into .env (GITHUB_INSTALLATION_ID=...)
 
@@ -25,6 +25,8 @@ make dev-serve             # starts the server
 ```
 
 That's the whole loop. The sections below explain each step in case something goes wrong.
+
+`make dev-bootstrap` prints a preflight plan describing every state change it's about to make — App name, webhook URL, file paths (with explicit "will overwrite" warnings) — and prompts before touching anything. Pass `-y` / `--yes` if you want to skip the prompt in scripts.
 
 ## What `make dev-bootstrap` does
 
