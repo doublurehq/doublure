@@ -50,7 +50,11 @@ Flags worth knowing:
 | `--env-file` | `.env` | Where to write env vars |
 | `--pem-file` | `dev.private-key.pem` | Where to write the private key |
 
-The `Makefile` target passes `--gitops-repo $(GITOPS_REPO)` (default `amine7536/akpe-gitops`); override with `GITOPS_REPO=other/repo make dev-bootstrap`.
+The `Makefile` target forwards `GITOPS_REPO` if set, otherwise the `.env` is written with `GITOPS_REPO=` and a comment reminding you to fill it in:
+
+```bash
+GITOPS_REPO=myorg/my-gitops make dev-bootstrap
+```
 
 ## Smoke the deploy endpoint
 
@@ -66,9 +70,9 @@ curl -s -X POST http://localhost:8080/v1/deploy \
     "head_ref": "feature/smoke-test",
     "commit_sha": "0000000000000000000000000000000000000001",
     "pr_author": "amine",
-    "pr_url": "https://github.com/amine7536/backend-1/pull/1",
+    "pr_url": "https://github.com/<your-org>/backend-1/pull/1",
     "pr_number": "1",
-    "workflow_run_url": "https://github.com/amine7536/backend-1/actions/runs/1"
+    "workflow_run_url": "https://github.com/<your-org>/backend-1/actions/runs/1"
   }' | jq
 ```
 
@@ -77,7 +81,7 @@ Expected:
 ```json
 {
   "preview_slug": "feature-smoke-test",
-  "gitops_commit_url": "https://github.com/amine7536/akpe-gitops/commit/<sha>"
+  "gitops_commit_url": "https://github.com/<your-org>/<your-gitops-repo>/commit/<sha>"
 }
 ```
 
@@ -121,7 +125,7 @@ If `make dev-bootstrap` doesn't work in your environment, create the App by hand
    export GITHUB_PRIVATE_KEY_PATH=./dev.private-key.pem
    export GITHUB_WEBHOOK_SECRET=<from step 1>
    export GITHUB_INSTALLATION_ID=<from the install URL>
-   export GITOPS_REPO=amine7536/akpe-gitops
+   export GITOPS_REPO=<your-org>/<your-gitops-repo>
    export PREVIO_DEPLOY_TOKEN=$(openssl rand -hex 32)
    export LISTEN_ADDR=:8080
    EOF

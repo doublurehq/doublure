@@ -1,6 +1,5 @@
 BINARY := previo
 CMD := ./cmd/previo
-GITOPS_REPO ?= amine7536/akpe-gitops
 
 .PHONY: build test lint docker-build dev-bootstrap dev-verify dev-serve
 
@@ -18,8 +17,11 @@ docker-build:
 
 # Creates a dev GitHub App via the manifest flow and writes .env + PEM in this
 # directory. Requires `ngrok http 8080` to be running in another terminal.
+# Pass GITOPS_REPO=<owner>/<repo> to prefill it in .env, otherwise edit .env
+# after the fact:
+#   GITOPS_REPO=myorg/my-gitops make dev-bootstrap
 dev-bootstrap:
-	go run $(CMD) bootstrap-app --gitops-repo $(GITOPS_REPO)
+	go run $(CMD) bootstrap-app --gitops-repo "$(GITOPS_REPO)"
 
 # Sanity-check the App credentials currently in .env / dev.private-key.pem.
 dev-verify:
