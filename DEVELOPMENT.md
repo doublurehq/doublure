@@ -1,136 +1,61 @@
 # Development
 
-End-to-end local setup for previo: GitHub App, webhook tunnel, env vars, smoke test.
+Local setup for previo: ngrok tunnel, GitHub App, env, smoke test.
 
 ## Prerequisites
 
 - Go 1.25+
-- `gh` CLI (optional but useful)
-- `ngrok` or `smee.io` for inbound webhook tunneling
-- A GitHub account where you can create Apps and have admin access to one or more repos
+- `ngrok` (or smee.io — see Appendix B)
+- GitHub account with admin access to the gitops repo
 
-## 1. Tunnel inbound webhooks
-
-GitHub posts webhooks to a public URL. Two options:
-
-**Option A — ngrok (recommended for HTTP debugging via the dashboard):**
+## Quickstart
 
 ```bash
-brew install ngrok
-ngrok config add-authtoken <token>     # one-time, from dashboard.ngrok.com
+# Terminal 1 — start the webhook tunnel
 ngrok http 8080
-```
 
-Note the forwarding URL (`https://<random>.ngrok-free.app`). Free-tier URLs change on every restart. To avoid editing the App webhook URL repeatedly, claim a free static domain at `dashboard.ngrok.com/domains` and run:
-
-```bash
-ngrok http 8080 --url=<your>.ngrok-free.app
-```
-
-**Option B — smee.io (stable URL with zero account setup):**
-
-```bash
-# Create channel: visit https://smee.io and click "Start a new channel"
-npx smee-client --url https://smee.io/<channel> --target http://localhost:8080/webhooks/github
-```
-
-## 2. Create the GitHub App
-
-Open https://github.com/settings/apps/new and fill in:
-
-| Field | Value |
-|---|---|
-| GitHub App name | `previo-dev-<your-handle>` (globally unique) |
-| Homepage URL | `http://localhost:8080` (not validated) |
-| Webhook URL | `https://<your-tunnel>/webhooks/github` |
-| Webhook secret | `openssl rand -hex 32` — save it |
-| Repository permissions | Contents R/W · Pull requests W · Metadata R |
-| Subscribe to events | `installation`, `installation_repositories`, `pull_request` |
-| Where can this be installed? | Only on this account |
-
-The authoritative spec for permissions and events is [`saas/GITHUB-APP.md`](../../saas/GITHUB-APP.md).
-
-After clicking **Create**:
-- Note the **App ID** at the top of the settings page.
-- Scroll down to **Private keys** → **Generate a private key**. A `.pem` file downloads. Move it to `services/previo/dev.private-key.pem` (overwriting any stale file).
-
-## 3. Install the App
-
-On the App settings page, click **Install App** in the left sidebar, then **Install** next to your account. Choose **Only select repositories** and pick at least:
-
-- `akpe-gitops` (or your gitops repo) — required for the values.yaml writes
-- `backend-1`, `backend-2`, `front` — optional, only if you want PR-comment fan-out to reach them
-
-After install, the browser URL ends with `/settings/installations/<ID>`. That number is your **installation ID**.
-
-## 4. Wire `.env`
-
-```bash
-cat > services/previo/.env <<'EOF'
-export GITHUB_APP_ID=<from step 2>
-export GITHUB_PRIVATE_KEY_PATH=./dev.private-key.pem
-export GITHUB_WEBHOOK_SECRET=<from step 2>
-export GITHUB_INSTALLATION_ID=<from step 3>
-export GITOPS_REPO=amine7536/akpe-gitops
-export PREVIO_DEPLOY_TOKEN=$(openssl rand -hex 32)
-export LISTEN_ADDR=:8080
-EOF
-chmod 600 services/previo/.env
-```
-
-`.env` is ignored by git via the global `.gitignore`. Do not commit it.
-
-## 5. Verify the App credentials
-
-Before running the server, sanity-check that the (App ID, PEM) pair is valid and the App is installed where you expect:
-
-```bash
+# Terminal 2 — from services/previo/
 cd services/previo
-source .env
-go run ./cmd/previo verify-app
+make dev-bootstrap         # creates the GitHub App, writes .env + dev.private-key.pem
+# (browser opens; click "Create GitHub App", then "Install" on the repos you want)
+# Paste the installation ID from the install URL into .env (GITHUB_INSTALLATION_ID=...)
+
+make dev-verify            # confirms the credentials are good and shows installation IDs
+make dev-serve             # starts the server
 ```
 
-Expected:
+That's the whole loop. The sections below explain each step in case something goes wrong.
 
-```
-App credentials OK
-  id:    123456
-  slug:  previo-dev-yourhandle
-  name:  previo-dev-yourhandle
-  owner: yourhandle
-  url:   https://github.com/apps/previo-dev-yourhandle
+## What `make dev-bootstrap` does
 
-Installations (1):
-  - id=87654321  account=yourhandle (User)
-```
+1. Reads the public HTTPS URL of your ngrok tunnel from the local ngrok inspector (`http://127.0.0.1:4040/api/tunnels`).
+2. Generates a webhook secret and a deploy token locally.
+3. Starts a temp HTTP listener on an ephemeral port and opens your browser to a page that POSTs a GitHub App manifest to `github.com/settings/apps/new`.
+4. After you click **Create GitHub App**, GitHub redirects back to the listener with a one-time code.
+5. Exchanges the code at `POST /app-manifests/:code/conversions` for the App ID, PEM, and webhook secret.
+6. Writes `dev.private-key.pem` and `.env` in the current directory.
+7. Opens the App's install page so you can attach it to the gitops repo + service repos.
 
-Common failures:
-- `401 A JSON web token could not be decoded` → the PEM does not match this App ID. Regenerate the private key from the App settings page and replace `dev.private-key.pem`, or fix `GITHUB_APP_ID`.
-- `Installations (0)` → the App exists but isn't installed anywhere. Go back to step 3.
+After install, the browser URL ends with `/settings/installations/<ID>`. Paste that into `.env` as `GITHUB_INSTALLATION_ID`.
 
-## 6. Run the server
+Flags worth knowing:
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--name` | `previo-dev-<hostname>` | App name (must be globally unique on GitHub) |
+| `--owner` | (your personal account) | Org login if the App should live in an org |
+| `--gitops-repo` | (empty) | Pre-fills `GITOPS_REPO` in `.env` |
+| `--env-file` | `.env` | Where to write env vars |
+| `--pem-file` | `dev.private-key.pem` | Where to write the private key |
+
+The `Makefile` target passes `--gitops-repo $(GITOPS_REPO)` (default `amine7536/akpe-gitops`); override with `GITOPS_REPO=other/repo make dev-bootstrap`.
+
+## Smoke the deploy endpoint
+
+With the server running:
 
 ```bash
-cd services/previo
 source .env
-go run ./cmd/previo serve
-```
-
-Logs: `starting server addr=:8080`.
-
-## 7. Verify the webhook plumbing
-
-In the GitHub App settings, go to **Advanced** → **Recent Deliveries**. The install creates a `ping` delivery. Click any delivery → **Redeliver**. previo logs should show:
-
-```
-received webhook event=ping size=N
-```
-
-with a 200 response. A 401 means the webhook secret in `.env` doesn't match what GitHub has — fix on either side.
-
-## 8. Smoke the deploy endpoint
-
-```bash
 curl -s -X POST http://localhost:8080/v1/deploy \
   -H "Authorization: Bearer $PREVIO_DEPLOY_TOKEN" \
   -H "Content-Type: application/json" \
@@ -138,14 +63,14 @@ curl -s -X POST http://localhost:8080/v1/deploy \
     "service": "backend-1",
     "head_ref": "feature/smoke-test",
     "commit_sha": "0000000000000000000000000000000000000001",
-    "pr_author": "yourhandle",
-    "pr_url": "https://github.com/yourhandle/backend-1/pull/1",
+    "pr_author": "amine",
+    "pr_url": "https://github.com/amine7536/backend-1/pull/1",
     "pr_number": "1",
-    "workflow_run_url": "https://github.com/yourhandle/backend-1/actions/runs/1"
+    "workflow_run_url": "https://github.com/amine7536/backend-1/actions/runs/1"
   }' | jq
 ```
 
-Expected response:
+Expected:
 
 ```json
 {
@@ -154,10 +79,61 @@ Expected response:
 }
 ```
 
-Verify the commit landed at `github.com/<your-gitops-repo>/commits/main`.
+The commit lands on the gitops repo's `main` branch.
 
-## Teardown
+## Verify webhook plumbing
 
-- Stop `previo serve` (Ctrl+C)
-- Stop ngrok / smee
-- The preview values file in the gitops repo can be left in place; it will be cleaned up later by the cleanup binary (Phase 5) or manually with `rm -rf previews/feature-smoke-test`.
+GitHub App settings → **Advanced** → **Recent Deliveries** → pick any → **Redeliver**. The server logs `received webhook event=<type> size=N` with a 200. A 401 means the webhook secret in `.env` doesn't match what GitHub has — fix on either side.
+
+## Appendix A — common failures
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ngrok inspector not reachable at http://127.0.0.1:4040/api/tunnels` | ngrok isn't running | Start `ngrok http 8080` |
+| `no https tunnel found in ngrok` | ngrok is running but on a non-HTTPS protocol | `ngrok http 8080` (not tcp/tls) |
+| `manifest exchange returned empty credentials` | The browser callback fired without a valid code | Retry `make dev-bootstrap`; check the GitHub tab for an error |
+| `previo verify-app` returns `401 A JSON web token could not be decoded` | `GITHUB_APP_ID` and `dev.private-key.pem` don't match | Re-run `make dev-bootstrap`, or regenerate the private key from the App settings page and replace `dev.private-key.pem` |
+| `previo verify-app` shows `Installations (0)` | App created but not installed anywhere | Open the App settings, click **Install App**, pick repos |
+| `previo serve` fails with `PREVIO_DEPLOY_TOKEN is required` | `.env` not sourced | `source .env` first, or use `make dev-serve` which sources for you |
+
+## Appendix B — using smee.io instead of ngrok
+
+ngrok's free-tier URL changes per restart; smee.io gives you a stable channel URL with zero account setup, at the cost of no local request inspector.
+
+```bash
+npx smee-client --url https://smee.io/<your-channel> --target http://localhost:8080/webhooks/github
+```
+
+`bootstrap-app` currently reads ngrok specifically. With smee you'll need to create the App manually (Appendix C), supplying the smee channel URL as the webhook URL.
+
+## Appendix C — manual App creation (manifest-flow fallback)
+
+If `make dev-bootstrap` doesn't work in your environment, create the App by hand:
+
+1. https://github.com/settings/apps/new — fill in:
+   - **GitHub App name**: `previo-dev-<your-handle>` (globally unique)
+   - **Homepage URL**: `http://localhost:8080`
+   - **Webhook URL**: `<your-tunnel-url>/webhooks/github`
+   - **Webhook secret**: `openssl rand -hex 32` — save the value
+   - **Repository permissions**: Contents R/W, Pull requests W, Metadata R
+   - **Subscribe to events**: `installation`, `installation_repositories`, `pull_request`
+   - **Where can this be installed?**: Only on this account
+2. Click **Create GitHub App**. Note the **App ID** at the top of the page.
+3. Scroll to **Private keys** → **Generate a private key**. Move the downloaded `.pem` to `services/previo/dev.private-key.pem`.
+4. Install the App (left sidebar → **Install App**) on the gitops repo and service repos.
+5. Write `.env` manually:
+
+   ```bash
+   cat > .env <<EOF
+   export GITHUB_APP_ID=<from step 2>
+   export GITHUB_PRIVATE_KEY_PATH=./dev.private-key.pem
+   export GITHUB_WEBHOOK_SECRET=<from step 1>
+   export GITHUB_INSTALLATION_ID=<from the install URL>
+   export GITOPS_REPO=amine7536/akpe-gitops
+   export PREVIO_DEPLOY_TOKEN=$(openssl rand -hex 32)
+   export LISTEN_ADDR=:8080
+   EOF
+   chmod 600 .env
+   ```
+
+The authoritative spec for permissions, events, and the production webhook URL is [`saas/GITHUB-APP.md`](../../saas/GITHUB-APP.md).

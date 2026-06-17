@@ -33,6 +33,7 @@ func main() {
 	root.AddCommand(serveCmd())
 	root.AddCommand(cleanupCmd())
 	root.AddCommand(verifyAppCmd())
+	root.AddCommand(bootstrapAppCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
