@@ -37,6 +37,74 @@ func (_m *MockWebhookValidator) EXPECT() *MockWebhookValidator_Expecter {
 	return &MockWebhookValidator_Expecter{mock: &_m.Mock}
 }
 
+// ParseEvent provides a mock function for the type MockWebhookValidator
+func (_mock *MockWebhookValidator) ParseEvent(eventType string, payload []byte) (any, error) {
+	ret := _mock.Called(eventType, payload)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ParseEvent")
+	}
+
+	var r0 any
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(string, []byte) (any, error)); ok {
+		return returnFunc(eventType, payload)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string, []byte) any); ok {
+		r0 = returnFunc(eventType, payload)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(any)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string, []byte) error); ok {
+		r1 = returnFunc(eventType, payload)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockWebhookValidator_ParseEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ParseEvent'
+type MockWebhookValidator_ParseEvent_Call struct {
+	*mock.Call
+}
+
+// ParseEvent is a helper method to define mock.On call
+//   - eventType string
+//   - payload []byte
+func (_e *MockWebhookValidator_Expecter) ParseEvent(eventType any, payload any) *MockWebhookValidator_ParseEvent_Call {
+	return &MockWebhookValidator_ParseEvent_Call{Call: _e.mock.On("ParseEvent", eventType, payload)}
+}
+
+func (_c *MockWebhookValidator_ParseEvent_Call) Run(run func(eventType string, payload []byte)) *MockWebhookValidator_ParseEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 []byte
+		if args[1] != nil {
+			arg1 = args[1].([]byte)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockWebhookValidator_ParseEvent_Call) Return(v any, err error) *MockWebhookValidator_ParseEvent_Call {
+	_c.Call.Return(v, err)
+	return _c
+}
+
+func (_c *MockWebhookValidator_ParseEvent_Call) RunAndReturn(run func(eventType string, payload []byte) (any, error)) *MockWebhookValidator_ParseEvent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateWebhook provides a mock function for the type MockWebhookValidator
 func (_mock *MockWebhookValidator) ValidateWebhook(r *http.Request) ([]byte, error) {
 	ret := _mock.Called(r)
@@ -72,7 +140,7 @@ type MockWebhookValidator_ValidateWebhook_Call struct {
 
 // ValidateWebhook is a helper method to define mock.On call
 //   - r *http.Request
-func (_e *MockWebhookValidator_Expecter) ValidateWebhook(r interface{}) *MockWebhookValidator_ValidateWebhook_Call {
+func (_e *MockWebhookValidator_Expecter) ValidateWebhook(r any) *MockWebhookValidator_ValidateWebhook_Call {
 	return &MockWebhookValidator_ValidateWebhook_Call{Call: _e.mock.On("ValidateWebhook", r)}
 }
 
