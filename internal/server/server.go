@@ -2,15 +2,17 @@ package server
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
-// WebhookValidator validates GitHub webhook signatures.
+// WebhookValidator validates GitHub webhook signatures and parses payloads
+// into typed event structs.
 type WebhookValidator interface {
 	ValidateWebhook(r *http.Request) ([]byte, error)
+	ParseEvent(eventType string, payload []byte) (any, error)
 }
 
 type Server struct {
@@ -23,6 +25,9 @@ type Server struct {
 func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string) *Server {
 	s := &Server{webhook: webhook, gitops: gitops, deployToken: deployToken}
 	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(accessLog)
 	r.Get("/healthz", s.handleHealthz)
 	r.Post("/webhooks/github", s.handleWebhook)
 	r.Route("/v1", func(r chi.Router) {
@@ -40,18 +45,4 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
-	payload, err := s.webhook.ValidateWebhook(r)
-	if err != nil {
-		http.Error(w, "invalid signature", http.StatusUnauthorized)
-		return
-	}
-
-	eventType := r.Header.Get("X-Github-Event")
-	//nolint:sloglint // no scoped logger yet
-	slog.InfoContext(r.Context(), "received webhook", "event", eventType, "size", len(payload))
-
-	w.WriteHeader(http.StatusOK)
 }
