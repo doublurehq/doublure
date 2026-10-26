@@ -1,0 +1,4 @@
+serviceRepos:
+  backend-1: "https://github.com/doublurehq/demo-backend-1.git"
+  backend-2: "https://github.com/doublurehq/demo-backend-2.git"
+  front:     "https://github.com/doublurehq/demo-front.git"

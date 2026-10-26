@@ -1,0 +1,5 @@
+config:
+  githubAppId: "1"
+  githubInstallationId: "1"
+  gitopsRepo: example/gitops
+existingSecret: doublure

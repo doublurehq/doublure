@@ -1,0 +1,76 @@
+name: Charts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - "examples/**"
+      - "internal/preview/testdata/**"
+      - "ct.yaml"
+      - ".github/workflows/charts.yml"
+  pull_request:
+    paths:
+      - "charts/**"
+      - "examples/**"
+      - "internal/preview/testdata/**"
+      - "ct.yaml"
+      - ".github/workflows/charts.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: charts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v5
+
+      - name: helm lint
+        run: for c in charts/*/; do helm lint "$c" -f "$c/ci/test-values.yaml"; done
+
+      - name: ct lint
+        run: |
+          docker run --rm -v "$PWD":/w -w /w quay.io/helmpack/chart-testing:v3.15.0 \
+            sh -c 'git config --global --add safe.directory /w && ct lint --config ct.yaml --all'
+
+      - name: Render preview-env with doublure values
+        run: |
+          out=$(helm template preview-x charts/preview-env -f examples/argocd/services.yaml -f internal/preview/testdata/values.golden.yaml)
+          echo "$out" | grep -q 'preview.doublure.dev/pr-url'
+          if echo "$out" | grep -q 'akpe'; then
+            echo "::error::rendered preview-env still references akpe"
+            exit 1
+          fi
+
+      - name: Render doublure with all components
+        run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true
+
+      - name: Render doublure with numeric github ids
+        run: |
+          out=$(helm template t charts/doublure -f - <<'EOF'
+          config:
+            githubAppId: 1234567
+            githubInstallationId: 87654321
+            gitopsRepo: example/gitops
+          existingSecret: doublure
+          EOF
+          )
+          echo "$out" | grep -q 'value: "1234567"'
+          echo "$out" | grep -q 'value: "87654321"'
+
+      - name: Render doublure without required values fails
+        run: |
+          if out=$(helm template t charts/doublure 2>&1); then
+            echo "::error::expected render to fail without required values"
+            exit 1
+          fi
+          echo "$out" | grep -q 'existingSecret is required'

@@ -1,0 +1,20 @@
+# services: list of services to deploy in the preview environment
+# Each service can optionally have commitSha (pinned) and metadata (PR info).
+#
+# services:
+#   - name: backend-1
+#     commitSha: "abc123"         # optional — pinned to commit SHA (used as targetRevision and image.tag)
+#     metadata:                    # optional — only present when service has a PR
+#       pr-author: "octocat"
+#       pr-url: "https://github.com/doublurehq/demo-backend-1/pull/42"
+#       pr-number: "42"
+#       created-at: "2026-02-18T14:30:00Z"
+#       updated-at: "2026-02-18T16:00:00Z"
+#       vcs.ref.name: "feature/add-pricing"
+#       cicd.pipeline.run.url: "https://github.com/doublurehq/demo-backend-1/actions/runs/12345"
+#   - name: backend-2              # no commitSha → tracks main, no metadata
+#   - name: front
+
+services: []
+
+serviceRepos: {}

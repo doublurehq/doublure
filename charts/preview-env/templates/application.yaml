@@ -1,0 +1,47 @@
+{{- range .Values.services }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $.Release.Name }}-{{ .name }}
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: {{ .name }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/part-of: preview-environments
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    preview.doublure.dev/vcs.ref.revision: {{ .commitSha | default "" | quote }}
+    {{- if .metadata }}
+    preview.doublure.dev/pr-author: {{ index .metadata "pr-author" | quote }}
+    preview.doublure.dev/pr-url: {{ index .metadata "pr-url" | quote }}
+    preview.doublure.dev/pr-number: {{ index .metadata "pr-number" | quote }}
+    preview.doublure.dev/created-at: {{ index .metadata "created-at" | quote }}
+    preview.doublure.dev/updated-at: {{ index .metadata "updated-at" | quote }}
+    preview.doublure.dev/vcs.ref.name: {{ index .metadata "vcs.ref.name" | quote }}
+    preview.doublure.dev/cicd.pipeline.run.url: {{ index .metadata "cicd.pipeline.run.url" | quote }}
+    {{- end }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ $.Release.Name }}
+  source:
+    repoURL: "{{ index $.Values.serviceRepos .name }}"
+    targetRevision: {{ if .commitSha }}{{ .commitSha }}{{ else }}main{{ end }}
+    path: k8s/
+    helm:
+      releaseName: {{ .name }}
+      parameters:
+        - name: app.image.tag
+          value: {{ if .commitSha }}{{ .commitSha | quote }}{{ else }}"$ARGOCD_APP_REVISION"{{ end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $.Release.Name }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+---
+{{- end }}

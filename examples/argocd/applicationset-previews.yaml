@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: preview-environments
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/doublurehq/demo-gitops.git
+        revision: HEAD
+        directories:
+          - path: "previews/*"
+  template:
+    metadata:
+      name: "{{ .path.basename }}"
+      labels:
+        app.kubernetes.io/part-of: preview-environments
+    spec:
+      project: previews
+      sources:
+        - repoURL: https://github.com/doublurehq/demo-gitops.git
+          targetRevision: HEAD
+          ref: values
+        - repoURL: oci://ghcr.io/doublurehq/charts/preview-env
+          targetRevision: 0.3.0
+          path: "."
+          helm:
+            releaseName: "{{ .path.basename }}"
+            valueFiles:
+              - "$values/services.yaml"
+              - "$values/{{ .path.path }}/values.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false

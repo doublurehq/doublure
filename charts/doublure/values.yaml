@@ -1,0 +1,42 @@
+# Number of server replicas.
+replicaCount: 1
+
+# Container image; an empty tag defaults to .Chart.AppVersion.
+image:
+  repository: ghcr.io/doublurehq/doublure
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Pull secrets for a private registry.
+imagePullSecrets: []
+
+# Server configuration; all three values are required.
+config:
+  # GitHub App ID (GITHUB_APP_ID).
+  githubAppId: ""
+  # GitHub App installation ID (GITHUB_INSTALLATION_ID).
+  githubInstallationId: ""
+  # Gitops repository as owner/name (GITOPS_REPO).
+  gitopsRepo: ""
+
+# Required: existing Secret with keys github-private-key, github-webhook-secret and deploy-token.
+existingSecret: ""
+
+# Port the server listens on and the Service exposes.
+service:
+  port: 8080
+
+# Ingress exposing /webhooks/github and /v1/deploy; host is required when enabled.
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  tls: []
+
+# Container resource requests and limits.
+resources: {}
+
+# Stale-preview cleanup CronJob.
+cleanup:
+  enabled: false
+  schedule: "0 * * * *"
