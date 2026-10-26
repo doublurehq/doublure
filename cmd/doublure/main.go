@@ -66,7 +66,7 @@ func serveCmd() *cobra.Command {
 			ghClient := app.ClientForInstallation(cfg.InstallationID)
 			gitopsClient := gitops.NewClient(ghClient, owner, repo)
 
-			srv := server.NewServer(app, gitopsClient, cfg.DeployToken)
+			srv := server.NewServer(app, gitopsClient, cfg.DeployToken, cfg.InstallationID)
 			httpSrv := &http.Server{
 				Addr:              cfg.ListenAddr,
 				Handler:           srv.Handler(),

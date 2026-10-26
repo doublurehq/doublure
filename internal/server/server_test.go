@@ -12,7 +12,7 @@ import (
 
 func TestHealthz(t *testing.T) {
 	m := mocks.NewMockWebhookValidator(t)
-	srv := server.NewServer(m, nil, "test-deploy-token")
+	srv := server.NewServer(m, nil, "test-deploy-token", 0)
 
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))

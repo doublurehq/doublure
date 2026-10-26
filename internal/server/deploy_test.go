@@ -68,7 +68,7 @@ func validBody() string {
 
 func newTestServer(t *testing.T, fg *fakeGitops) *Server {
 	t.Helper()
-	return NewServer(nil, fg, "test-token")
+	return NewServer(nil, fg, "test-token", 0)
 }
 
 func postDeploy(t *testing.T, srv *Server, body, bearer string) *httptest.ResponseRecorder {
