@@ -8,12 +8,20 @@ import (
 	gh "github.com/google/go-github/v71/github"
 )
 
+// installationEvent is implemented by go-github event types that carry the
+// installation the delivery was sent for.
+type installationEvent interface {
+	GetInstallation() *gh.Installation
+}
+
 // handleWebhook validates the signature, parses the payload into a typed
-// event, and dispatches to a per-event handler. It always responds 200 once
-// the signature checks out: webhook deliveries are at-most-once with retries
-// on non-200, and we have nowhere to re-queue a failed parse, so a non-200
-// would just make GitHub retry the same poison delivery. Parse/dispatch
-// failures are logged and swallowed.
+// event, checks that it comes from the configured installation, and
+// dispatches to a per-event handler. Deliveries from any other installation,
+// or without one, get 403; ping is exempt because it carries no installation.
+// Parse and dispatch failures are logged and answered with 200: the delivery
+// is authentic and there is nothing to re-queue, so a non-2xx would only flag
+// it as failed in Recent Deliveries. GitHub does not automatically redeliver
+// failed deliveries.
 func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	eventType := r.Header.Get("X-Github-Event")
 	ctx := r.Context()
@@ -31,9 +39,33 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	event, err := s.webhook.ParseEvent(eventType, payload)
+	if err != nil {
+		slog.ErrorContext(ctx, "webhook parse failed",
+			slog.String("event", eventType), slog.String("err", err.Error()))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if eventType != "ping" {
+		var inst *gh.Installation
+		if ie, ok := event.(installationEvent); ok {
+			inst = ie.GetInstallation()
+		}
+		if inst.GetID() == 0 || inst.GetID() != s.allowedInstallationID {
+			slog.WarnContext(ctx, "webhook installation rejected",
+				slog.String("event", eventType),
+				slog.Int64("installation_id", inst.GetID()),
+				slog.String("account", inst.GetAccount().GetLogin()),
+			)
+			http.Error(w, "installation not allowed", http.StatusForbidden)
+			return
+		}
+	}
+
 	// Backstop: go-github event structs are pointer-heavy; a handler that
 	// dereferences a missing optional field would panic and, without recovery,
-	// surface as a 500 — triggering GitHub's retry loop. Recover, log, 200.
+	// surface as a 500 that marks the delivery failed. Recover, log, 200.
 	defer func() {
 		if rec := recover(); rec != nil {
 			slog.ErrorContext(ctx, "webhook handler panicked",
@@ -41,13 +73,6 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusOK)
 	}()
-
-	event, err := s.webhook.ParseEvent(eventType, payload)
-	if err != nil {
-		slog.ErrorContext(ctx, "webhook parse failed",
-			slog.String("event", eventType), slog.String("err", err.Error()))
-		return
-	}
 
 	s.dispatchEvent(ctx, eventType, event)
 }

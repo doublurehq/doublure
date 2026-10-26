@@ -19,11 +19,19 @@ type Server struct {
 	webhook     WebhookValidator
 	gitops      gitopsAPI
 	deployToken string
-	router      chi.Router
+	// allowedInstallationID is the only GitHub App installation whose webhook
+	// deliveries are dispatched.
+	allowedInstallationID int64
+	router                chi.Router
 }
 
-func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string) *Server {
-	s := &Server{webhook: webhook, gitops: gitops, deployToken: deployToken}
+func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string, allowedInstallationID int64) *Server {
+	s := &Server{
+		webhook:               webhook,
+		gitops:                gitops,
+		deployToken:           deployToken,
+		allowedInstallationID: allowedInstallationID,
+	}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)

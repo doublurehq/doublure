@@ -22,6 +22,9 @@ import (
 
 const testWebhookSecret = "test-webhook-secret"
 
+// testInstallationID is the installation the test server accepts deliveries from.
+const testInstallationID int64 = 123
+
 // generateTestKey returns a PEM-encoded RSA private key. The App only needs a
 // well-formed key to construct its transport; webhook validation and parsing
 // don't exercise it.
@@ -46,6 +49,13 @@ func generateTestKey(t *testing.T) []byte {
 // Returns the server and a func that snapshots the records logged so far.
 func newWebhookServer(t *testing.T) (*server.Server, func() []slog.Record) {
 	t.Helper()
+	return newWebhookServerForInstallation(t, testInstallationID)
+}
+
+// newWebhookServerForInstallation is newWebhookServer with an explicit
+// allowed installation ID.
+func newWebhookServerForInstallation(t *testing.T, allowedInstallationID int64) (*server.Server, func() []slog.Record) {
+	t.Helper()
 	app, err := github.NewApp(github.AppConfig{
 		AppID:         1,
 		PrivateKey:    generateTestKey(t),
@@ -60,7 +70,7 @@ func newWebhookServer(t *testing.T) (*server.Server, func() []slog.Record) {
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	return server.NewServer(app, nil, "test-deploy-token"), capture.records
+	return server.NewServer(app, nil, "test-deploy-token", allowedInstallationID), capture.records
 }
 
 // captureHandler is a minimal slog.Handler that retains every record.
@@ -154,7 +164,7 @@ func TestWebhookDispatch(t *testing.T) {
 		{
 			name:      "pull_request",
 			eventType: "pull_request",
-			body:      `{"action":"opened","number":7,"repository":{"full_name":"acme/backend-1"},"pull_request":{"head":{"ref":"feature/x","sha":"deadbeef"},"user":{"login":"amine"}}}`,
+			body:      `{"action":"opened","number":7,"installation":{"id":123},"repository":{"full_name":"acme/backend-1"},"pull_request":{"head":{"ref":"feature/x","sha":"deadbeef"},"user":{"login":"amine"}}}`,
 			wantMsg:   "webhook pull_request",
 			wantAttrs: map[string]string{"action": "opened", "repo": "acme/backend-1", "head_ref": "feature/x"},
 		},
@@ -223,7 +233,7 @@ func TestWebhookParseFailure(t *testing.T) {
 func TestWebhookUnknownEvent(t *testing.T) {
 	srv, records := newWebhookServer(t)
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, signedRequest("discussion", []byte(`{"action":"created"}`)))
+	srv.Handler().ServeHTTP(rec, signedRequest("discussion", []byte(`{"action":"created","installation":{"id":123}}`)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -242,7 +252,8 @@ func TestWebhookMissingOptionalFields(t *testing.T) {
 	// Handler must not panic; deref-safe accessors return zero values.
 	srv, records := newWebhookServer(t)
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, signedRequest("pull_request", []byte(`{"action":"closed","number":9}`)))
+	body := `{"action":"closed","number":9,"installation":{"id":123}}`
+	srv.Handler().ServeHTTP(rec, signedRequest("pull_request", []byte(body)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -257,5 +268,80 @@ func TestWebhookMissingOptionalFields(t *testing.T) {
 	}
 	if got := attrs["head_ref"].String(); got != "" {
 		t.Errorf("head_ref = %q, want empty (field absent)", got)
+	}
+}
+
+func TestWebhookForeignInstallation(t *testing.T) {
+	srv, records := newWebhookServer(t)
+	rec := httptest.NewRecorder()
+	body := `{"action":"opened","number":7,"installation":{"id":999,"account":{"login":"evil"}}}`
+	srv.Handler().ServeHTTP(rec, signedRequest("pull_request", []byte(body)))
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+	r, ok := findRecord(records(), "webhook installation rejected")
+	if !ok {
+		t.Fatal("expected 'webhook installation rejected' log record")
+	}
+	if r.Level != slog.LevelWarn {
+		t.Errorf("level = %v, want WARN", r.Level)
+	}
+	attrs := recordAttrs(r)
+	if got := attrs["installation_id"].Int64(); got != 999 {
+		t.Errorf("installation_id = %d, want 999", got)
+	}
+	if got := attrs["account"].String(); got != "evil" {
+		t.Errorf("account = %q, want evil", got)
+	}
+	if got := attrs["event"].String(); got != "pull_request" {
+		t.Errorf("event = %q, want pull_request", got)
+	}
+	if _, dispatched := findRecord(records(), "webhook pull_request"); dispatched {
+		t.Error("foreign installation delivery must not be dispatched")
+	}
+}
+
+func TestWebhookMissingInstallation(t *testing.T) {
+	srv, records := newWebhookServer(t)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, signedRequest("pull_request", []byte(`{"action":"opened","number":7}`)))
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+	r, ok := findRecord(records(), "webhook installation rejected")
+	if !ok {
+		t.Fatal("expected 'webhook installation rejected' log record")
+	}
+	if got := recordAttrs(r)["installation_id"].Int64(); got != 0 {
+		t.Errorf("installation_id = %d, want 0", got)
+	}
+}
+
+func TestWebhookMissingInstallationZeroAllowed(t *testing.T) {
+	srv, records := newWebhookServerForInstallation(t, 0)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, signedRequest("pull_request", []byte(`{"action":"opened","number":7}`)))
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+	if _, ok := findRecord(records(), "webhook installation rejected"); !ok {
+		t.Fatal("expected 'webhook installation rejected' log record")
+	}
+}
+
+func TestWebhookForeignInstallationEvent(t *testing.T) {
+	srv, records := newWebhookServer(t)
+	rec := httptest.NewRecorder()
+	body := `{"action":"created","installation":{"id":999,"account":{"login":"evil"}}}`
+	srv.Handler().ServeHTTP(rec, signedRequest("installation", []byte(body)))
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+	if _, ok := findRecord(records(), "webhook installation"); ok {
+		t.Error("foreign installation event must not be dispatched")
 	}
 }
