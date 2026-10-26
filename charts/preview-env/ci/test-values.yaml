@@ -1,0 +1,6 @@
+services:
+  - name: backend-1
+    commitSha: "abc123"
+
+serviceRepos:
+  backend-1: "https://github.com/doublurehq/demo-backend-1.git"

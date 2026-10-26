@@ -1,0 +1,28 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/doublurehq/demo-backend-1
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8080
+
+ingress:
+  enabled: true
+  host: test.127.0.0.1.nip.io
+
+healthCheck:
+  path: /health
+  livenessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 3
+    periodSeconds: 5
+
+postgres:
+  enabled: false
+
+env:
+  FOO: bar
