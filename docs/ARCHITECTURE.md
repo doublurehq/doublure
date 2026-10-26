@@ -23,9 +23,10 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
 | `doublure serve` | this repo | chi HTTP server: `/healthz`, `/v1/deploy`, `/webhooks/github` |
 | `doublure cleanup` | this repo | One-shot, CronJob. Stub today (see ROADMAP) |
 | `doublure bootstrap-app` / `verify-app` | this repo | Create a GitHub App via the manifest flow / check credentials |
-| `preview-env` chart | [akpe-charts](https://github.com/amine7536/akpe-charts) (moving into this repo) | Renders AppProject, Namespace, one ArgoCD Application per service |
-| ApplicationSet | [demo-gitops](https://github.com/doublurehq/demo-gitops) `applicationset-previews.yaml` (moving into this repo as example) | Git directory generator on `previews/*` |
-| Service chart | each service repo `k8s/` (uses the `app` chart from akpe-charts) | Image tag = `commitSha` or `$ARGOCD_APP_REVISION` |
+| `preview-env` chart | this repo, [`charts/preview-env`](../charts/preview-env) | Renders AppProject, Namespace, one ArgoCD Application per service; Application annotations `preview.doublure.dev/*` carry the PR metadata |
+| ApplicationSet | this repo, [`examples/argocd`](../examples/argocd) | Git directory generator on `previews/*` |
+| Service chart | each service repo `k8s/` (uses the `app` chart, [`charts/app`](../charts/app)) | Image tag = `commitSha` or `$ARGOCD_APP_REVISION` |
+| `doublure` chart | this repo, [`charts/doublure`](../charts/doublure) | Installs `doublure serve` (Deployment, Service, optional Ingress) and the cleanup CronJob (off by default) |
 
 ## Gitops repo contract
 
