@@ -58,6 +58,7 @@ POST /v1/deploy
 
 POST /webhooks/github
   X-Hub-Signature-256 verified (401 on mismatch)
+  installation ≠ GITHUB_INSTALLATION_ID (ping exempt) → 403
   ping, installation, installation_repositories, pull_request → structured log only (today)
   parse failures / handler panics → logged, 200
 ```
