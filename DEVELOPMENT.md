@@ -110,7 +110,7 @@ B='{not valid json'; hook pull_request "$(sign "$B")" "$B"               # 200 +
 B='{"zen":"manual test","hook_id":1}'; hook ping "$(sign "$B")" "$B"     # 200 + "webhook ping"
 ```
 
-A signed-but-unparseable delivery is logged and accepted with 200 so GitHub doesn't keep redelivering it.
+A signed-but-unparseable delivery is authentic and there is nothing to re-queue, so it is logged and answered with 200; a non-2xx would only flag it as failed in Recent Deliveries.
 
 ## Appendix A — common failures
 
