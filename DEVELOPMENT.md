@@ -1,6 +1,6 @@
 # Development
 
-Local setup for previo: ngrok tunnel, GitHub App, env, smoke test.
+Local setup for doublure: ngrok tunnel, GitHub App, env, smoke test.
 
 ## Prerequisites
 
@@ -15,8 +15,8 @@ Local setup for previo: ngrok tunnel, GitHub App, env, smoke test.
 # Terminal 1 — start the webhook tunnel
 ngrok http 8080
 
-# Terminal 2 — from services/previo/
-cd services/previo
+# Terminal 2 — from services/doublure/
+cd services/doublure
 make dev-bootstrap         # shows a preflight plan, then (on y) creates the App + writes .env + PEM
 # (browser opens; click "Create GitHub App", then "Install" on the repos you want)
 # Paste the installation ID from the install URL into .env (GITHUB_INSTALLATION_ID=...)
@@ -45,7 +45,7 @@ Flags worth knowing:
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--name` | `previo-dev-<hostname>` | App name (must be globally unique on GitHub) |
+| `--name` | `doublure-dev-<hostname>` | App name (must be globally unique on GitHub) |
 | `--owner` | (your personal account) | Org login if the App should live in an org |
 | `--gitops-repo` | (empty) | Pre-fills `GITOPS_REPO` in `.env` |
 | `--env-file` | `.env` | Where to write env vars |
@@ -66,7 +66,7 @@ source .env
 ORG=$(gh api /user --jq .login)
 
 curl -s -X POST http://localhost:8080/v1/deploy \
-  -H "Authorization: Bearer $PREVIO_DEPLOY_TOKEN" \
+  -H "Authorization: Bearer $DOUBLURE_DEPLOY_TOKEN" \
   -H "Content-Type: application/json" \
   -d @- <<EOF | jq
 {
@@ -119,16 +119,16 @@ A signed-but-unparseable delivery is logged and accepted with 200 so GitHub does
 | `ngrok inspector not reachable at http://127.0.0.1:4040/api/tunnels` | ngrok isn't running | Start `ngrok http 8080` |
 | `no https tunnel found in ngrok` | ngrok is running but on a non-HTTPS protocol | `ngrok http 8080` (not tcp/tls) |
 | `manifest exchange returned empty credentials` | The browser callback fired without a valid code | Retry `make dev-bootstrap`; check the GitHub tab for an error |
-| `previo verify-app` returns `401 A JSON web token could not be decoded` | `GITHUB_APP_ID` and `dev.private-key.pem` don't match | Re-run `make dev-bootstrap`, or regenerate the private key from the App settings page and replace `dev.private-key.pem` |
-| `previo verify-app` shows `Installations (0)` | App created but not installed anywhere | Open the App settings, click **Install App**, pick repos |
-| `previo serve` fails with `PREVIO_DEPLOY_TOKEN is required` | `.env` not sourced | `source .env` first, or use `make dev-serve` which sources for you |
+| `doublure verify-app` returns `401 A JSON web token could not be decoded` | `GITHUB_APP_ID` and `dev.private-key.pem` don't match | Re-run `make dev-bootstrap`, or regenerate the private key from the App settings page and replace `dev.private-key.pem` |
+| `doublure verify-app` shows `Installations (0)` | App created but not installed anywhere | Open the App settings, click **Install App**, pick repos |
+| `doublure serve` fails with `DOUBLURE_DEPLOY_TOKEN is required` | `.env` not sourced | `source .env` first, or use `make dev-serve` which sources for you |
 
 ## Appendix B — manual App creation (manifest-flow fallback)
 
 If `make dev-bootstrap` doesn't work in your environment, create the App by hand:
 
 1. https://github.com/settings/apps/new — fill in:
-   - **GitHub App name**: `previo-dev-<your-handle>` (globally unique)
+   - **GitHub App name**: `doublure-dev-<your-handle>` (globally unique)
    - **Homepage URL**: `http://localhost:8080`
    - **Webhook URL**: `<your-tunnel-url>/webhooks/github`
    - **Webhook secret**: `openssl rand -hex 32` — save the value
@@ -136,7 +136,7 @@ If `make dev-bootstrap` doesn't work in your environment, create the App by hand
    - **Subscribe to events**: `pull_request` (installation / installation_repositories fire automatically — do not subscribe to them explicitly)
    - **Where can this be installed?**: Only on this account
 2. Click **Create GitHub App**. Note the **App ID** at the top of the page.
-3. Scroll to **Private keys** → **Generate a private key**. Move the downloaded `.pem` to `services/previo/dev.private-key.pem`.
+3. Scroll to **Private keys** → **Generate a private key**. Move the downloaded `.pem` to `services/doublure/dev.private-key.pem`.
 4. Install the App (left sidebar → **Install App**) on the gitops repo and service repos.
 5. Write `.env` manually:
 
@@ -147,7 +147,7 @@ If `make dev-bootstrap` doesn't work in your environment, create the App by hand
    export GITHUB_WEBHOOK_SECRET=<from step 1>
    export GITHUB_INSTALLATION_ID=<from the install URL>
    export GITOPS_REPO=<your-org>/<your-gitops-repo>
-   export PREVIO_DEPLOY_TOKEN=$(openssl rand -hex 32)
+   export DOUBLURE_DEPLOY_TOKEN=$(openssl rand -hex 32)
    export LISTEN_ADDR=:8080
    EOF
    chmod 600 .env

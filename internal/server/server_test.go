@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pixelfactoryio/previo/internal/server"
-	"github.com/pixelfactoryio/previo/internal/server/mocks"
+	"github.com/doublurehq/doublure/internal/server"
+	"github.com/doublurehq/doublure/internal/server/mocks"
 )
 
 func TestHealthz(t *testing.T) {

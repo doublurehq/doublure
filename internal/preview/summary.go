@@ -18,7 +18,7 @@ func deriveCommitURL(prURL, sha string) string {
 	return m[1] + "/commit/" + sha
 }
 
-// BuildSummary renders the markdown summary that previo posts back as a PR
+// BuildSummary renders the markdown summary that doublure posts back as a PR
 // comment. Each service line shows the pinned commit (with a link if
 // derivable) or a 🔄 main badge for main-tracking entries. The trailing line
 // links to the gitops commit that recorded the change.

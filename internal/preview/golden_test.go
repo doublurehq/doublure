@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/pixelfactoryio/previo/internal/preview"
+	"github.com/doublurehq/doublure/internal/preview"
 )
 
 // updateGolden, when set, rewrites testdata/values.golden.yaml from the

@@ -14,12 +14,12 @@ import (
 	gh "github.com/google/go-github/v71/github"
 	"gopkg.in/yaml.v3"
 
-	"github.com/pixelfactoryio/previo/internal/preview"
+	"github.com/doublurehq/doublure/internal/preview"
 )
 
 // PRCommentMarker is the HTML comment used as a sentinel for find-or-create
 // semantics on PR comments.
-const PRCommentMarker = "<!-- previo:preview -->"
+const PRCommentMarker = "<!-- doublure:preview -->"
 
 // MaxWriteRetries is the cap on 409-conflict retries for WritePreviewWithRetry.
 const MaxWriteRetries = 3

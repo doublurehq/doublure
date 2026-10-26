@@ -10,8 +10,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/pixelfactoryio/previo/internal/gitops"
-	"github.com/pixelfactoryio/previo/internal/preview"
+	"github.com/doublurehq/doublure/internal/gitops"
+	"github.com/doublurehq/doublure/internal/preview"
 )
 
 // deployTimeout caps the upstream work for a single deploy. Catalog + read +

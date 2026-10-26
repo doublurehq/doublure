@@ -3,7 +3,7 @@ package preview_test
 import (
 	"testing"
 
-	"github.com/pixelfactoryio/previo/internal/preview"
+	"github.com/doublurehq/doublure/internal/preview"
 )
 
 func TestSlugify(t *testing.T) {

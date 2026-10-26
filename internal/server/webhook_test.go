@@ -16,8 +16,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/pixelfactoryio/previo/internal/github"
-	"github.com/pixelfactoryio/previo/internal/server"
+	"github.com/doublurehq/doublure/internal/github"
+	"github.com/doublurehq/doublure/internal/server"
 )
 
 const testWebhookSecret = "test-webhook-secret"

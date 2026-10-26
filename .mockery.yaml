@@ -1,5 +1,5 @@
 packages:
-  github.com/pixelfactoryio/previo/internal/server:
+  github.com/doublurehq/doublure/internal/server:
     config:
       dir: "internal/server/mocks"
       pkgname: "mocks"
