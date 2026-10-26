@@ -95,7 +95,22 @@ Open the gitops repo on GitHub to confirm the commit landed on `main`.
 
 ## Verify webhook plumbing
 
-GitHub App settings → **Advanced** → **Recent Deliveries** → pick any → **Redeliver**. The server logs `received webhook event=<type> size=N` with a 200. A 401 means the webhook secret in `.env` doesn't match what GitHub has — fix on either side.
+GitHub App settings → **Advanced** → **Recent Deliveries** → pick any → **Redeliver**. The server answers 200 and logs one line per event type (`webhook ping`, `webhook installation`, `webhook installation_repositories`, `webhook pull_request`); other event types log `unhandled webhook event` (or `webhook parse failed` if go-github doesn't know the type). A 401 means the webhook secret in `.env` doesn't match what GitHub has — fix on either side.
+
+To exercise the handler without GitHub, sign the body yourself. The HMAC covers the exact body bytes, so use `printf '%s'` (no trailing newline), never `echo`:
+
+```bash
+source .env
+sign() { printf 'sha256=%s' "$(printf '%s' "$1" | openssl dgst -sha256 -hmac "$GITHUB_WEBHOOK_SECRET" | awk '{print $NF}')"; }
+hook() { curl -s -o /dev/null -w "HTTP %{http_code}\n" -X POST http://localhost:8080/webhooks/github \
+  -H "X-Github-Event: $1" -H "X-Hub-Signature-256: $2" -H "Content-Type: application/json" -d "$3"; }
+
+hook ping 'sha256=deadbeef' '{"zen":"forged"}'                          # 401, handler never runs
+B='{not valid json'; hook pull_request "$(sign "$B")" "$B"               # 200 + "webhook parse failed"
+B='{"zen":"manual test","hook_id":1}'; hook ping "$(sign "$B")" "$B"     # 200 + "webhook ping"
+```
+
+A signed-but-unparseable delivery is logged and accepted with 200 so GitHub doesn't keep redelivering it.
 
 ## Appendix A — common failures
 
@@ -137,5 +152,3 @@ If `make dev-bootstrap` doesn't work in your environment, create the App by hand
    EOF
    chmod 600 .env
    ```
-
-The authoritative spec for permissions, events, and the production webhook URL is [`saas/GITHUB-APP.md`](../../saas/GITHUB-APP.md).
