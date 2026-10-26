@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "doublure.fullname" . }}
+  labels:
+    {{- include "doublure.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "doublure.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "doublure.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "doublure.fullname" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "doublure.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: doublure
+          image: {{ include "doublure.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            {{- include "doublure.env" . | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- include "doublure.containerSecurityContext" . | nindent 12 }}

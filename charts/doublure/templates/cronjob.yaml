@@ -1,0 +1,40 @@
+{{- if .Values.cleanup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "doublure.fullname" . }}-cleanup
+  labels:
+    {{- include "doublure.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cleanup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/instance: {{ .Release.Name }}
+            app.kubernetes.io/component: cleanup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "doublure.fullname" . }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- include "doublure.podSecurityContext" . | nindent 12 }}
+          containers:
+            - name: cleanup
+              image: {{ include "doublure.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args: ["cleanup"]
+              env:
+                {{- include "doublure.env" . | nindent 16 }}
+              {{- with .Values.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              securityContext:
+                {{- include "doublure.containerSecurityContext" . | nindent 16 }}
+{{- end }}
