@@ -24,9 +24,10 @@ The charts are published to `oci://ghcr.io/doublurehq/charts/*` from the first r
 
 ## Install doublure
 
-Create the Secret the chart reads (it never creates Secrets itself):
+Create the namespace and the Secret the chart reads (it never creates Secrets itself):
 
 ```bash
+kubectl create namespace doublure
 kubectl create secret generic doublure -n doublure \
   --from-file=github-private-key=./app.private-key.pem \
   --from-literal=github-webhook-secret="$GITHUB_WEBHOOK_SECRET" \
