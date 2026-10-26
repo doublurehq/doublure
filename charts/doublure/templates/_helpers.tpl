@@ -37,9 +37,9 @@ Server environment.
 {{- define "doublure.env" -}}
 {{- $secret := required "existingSecret is required" .Values.existingSecret -}}
 - name: GITHUB_APP_ID
-  value: {{ required "config.githubAppId is required" .Values.config.githubAppId | quote }}
+  value: {{ required "config.githubAppId is required" .Values.config.githubAppId | int64 | quote }}
 - name: GITHUB_INSTALLATION_ID
-  value: {{ required "config.githubInstallationId is required" .Values.config.githubInstallationId | quote }}
+  value: {{ required "config.githubInstallationId is required" .Values.config.githubInstallationId | int64 | quote }}
 - name: GITOPS_REPO
   value: {{ required "config.gitopsRepo is required" .Values.config.gitopsRepo | quote }}
 - name: LISTEN_ADDR
