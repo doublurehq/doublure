@@ -52,7 +52,7 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		if ie, ok := event.(installationEvent); ok {
 			inst = ie.GetInstallation()
 		}
-		if inst.GetID() != s.allowedInstallationID {
+		if inst.GetID() == 0 || inst.GetID() != s.allowedInstallationID {
 			slog.WarnContext(ctx, "webhook installation rejected",
 				slog.String("event", eventType),
 				slog.Int64("installation_id", inst.GetID()),

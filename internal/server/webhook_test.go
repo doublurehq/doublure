@@ -49,6 +49,13 @@ func generateTestKey(t *testing.T) []byte {
 // Returns the server and a func that snapshots the records logged so far.
 func newWebhookServer(t *testing.T) (*server.Server, func() []slog.Record) {
 	t.Helper()
+	return newWebhookServerForInstallation(t, testInstallationID)
+}
+
+// newWebhookServerForInstallation is newWebhookServer with an explicit
+// allowed installation ID.
+func newWebhookServerForInstallation(t *testing.T, allowedInstallationID int64) (*server.Server, func() []slog.Record) {
+	t.Helper()
 	app, err := github.NewApp(github.AppConfig{
 		AppID:         1,
 		PrivateKey:    generateTestKey(t),
@@ -63,7 +70,7 @@ func newWebhookServer(t *testing.T) (*server.Server, func() []slog.Record) {
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	return server.NewServer(app, nil, "test-deploy-token", testInstallationID), capture.records
+	return server.NewServer(app, nil, "test-deploy-token", allowedInstallationID), capture.records
 }
 
 // captureHandler is a minimal slog.Handler that retains every record.
@@ -309,6 +316,19 @@ func TestWebhookMissingInstallation(t *testing.T) {
 	}
 	if got := recordAttrs(r)["installation_id"].Int64(); got != 0 {
 		t.Errorf("installation_id = %d, want 0", got)
+	}
+}
+
+func TestWebhookMissingInstallationZeroAllowed(t *testing.T) {
+	srv, records := newWebhookServerForInstallation(t, 0)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, signedRequest("pull_request", []byte(`{"action":"opened","number":7}`)))
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+	if _, ok := findRecord(records(), "webhook installation rejected"); !ok {
+		t.Fatal("expected 'webhook installation rejected' log record")
 	}
 }
 
