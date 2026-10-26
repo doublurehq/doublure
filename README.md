@@ -46,6 +46,13 @@ Configuration (env):
 
 Local setup: [DEVELOPMENT.md](DEVELOPMENT.md).
 
+## Docs
+
+- [Principles](docs/PRINCIPLES.md): the delivery practices doublure implements, and their status
+- [Architecture](docs/ARCHITECTURE.md): components, gitops contract, API
+- [Roadmap](docs/ROADMAP.md): what's left for v1
+- [Target revision](docs/TARGET_REVISION.md): pinned vs main-tracking services
+
 ## License
 
 [Apache-2.0](LICENSE)
