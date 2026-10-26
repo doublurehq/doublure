@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pixelfactoryio/previo/internal/preview"
+	"github.com/doublurehq/doublure/internal/preview"
 )
 
 func TestBuildSummary_PinnedAndMainTracking(t *testing.T) {

@@ -1,4 +1,4 @@
-module github.com/pixelfactoryio/previo
+module github.com/doublurehq/doublure
 
 go 1.25.0
 

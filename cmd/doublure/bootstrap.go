@@ -69,7 +69,7 @@ before doing anything (skip with --yes).`,
 		},
 	}
 	host, _ := os.Hostname()
-	cmd.Flags().StringVar(&appName, "name", "previo-dev-"+sanitizeHost(host), "App name (must be globally unique)")
+	cmd.Flags().StringVar(&appName, "name", "doublure-dev-"+sanitizeHost(host), "App name (must be globally unique)")
 	cmd.Flags().StringVar(&gitopsRepo, "gitops-repo", "", "GITOPS_REPO value to write into .env (owner/repo)")
 	cmd.Flags().StringVar(&envPath, "env-file", ".env", "Path to write the .env file")
 	cmd.Flags().StringVar(&pemPath, "pem-file", "dev.private-key.pem", "Path to write the App private key")
@@ -210,7 +210,7 @@ func runBootstrap(ctx context.Context, stdin io.Reader, stdout io.Writer, opts b
 	fmt.Fprintf(stdout, "\nNext: install the App on the gitops repo + service repos:\n  %s\n", installURL)
 	_ = openBrowser(installURL)
 	fmt.Fprintln(stdout, "\nAfter install, paste the installation ID into .env (GITHUB_INSTALLATION_ID),")
-	fmt.Fprintln(stdout, "then run `previo verify-app` to confirm.")
+	fmt.Fprintln(stdout, "then run `doublure verify-app` to confirm.")
 	return nil
 }
 
@@ -219,7 +219,7 @@ func runBootstrap(ctx context.Context, stdin io.Reader, stdout io.Writer, opts b
 // files that will be written, and whether any of them will be overwritten.
 // Reads cleanly in a terminal without color so it's safe in any environment.
 func printPlan(w io.Writer, opts bootstrapOpts, webhookURL string) {
-	fmt.Fprintln(w, "Preflight — `previo bootstrap-app` will:")
+	fmt.Fprintln(w, "Preflight — `doublure bootstrap-app` will:")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  1. Create a new GitHub App")
 	fmt.Fprintf(w, "       name:        %s\n", opts.appName)
@@ -383,7 +383,7 @@ export GITHUB_PRIVATE_KEY_PATH=%s
 export GITHUB_WEBHOOK_SECRET=%s
 export GITHUB_INSTALLATION_ID= # set after installing the App
 export GITOPS_REPO=%s
-export PREVIO_DEPLOY_TOKEN=%s
+export DOUBLURE_DEPLOY_TOKEN=%s
 export LISTEN_ADDR=:8080
 `, v.AppID, v.PEMPath, v.WebhookSecret, gitops, v.DeployToken)
 }

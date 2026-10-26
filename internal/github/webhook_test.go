@@ -11,7 +11,7 @@ import (
 
 	gh "github.com/google/go-github/v71/github"
 
-	"github.com/pixelfactoryio/previo/internal/github"
+	"github.com/doublurehq/doublure/internal/github"
 )
 
 func signPayload(payload []byte, secret string) string {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pixelfactoryio/previo/internal/gitops"
-	"github.com/pixelfactoryio/previo/internal/preview"
+	"github.com/doublurehq/doublure/internal/gitops"
+	"github.com/doublurehq/doublure/internal/preview"
 )
 
 // fakeGitops captures calls and returns canned responses. Each field controls

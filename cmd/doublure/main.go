@@ -17,15 +17,15 @@ import (
 	gh "github.com/google/go-github/v71/github"
 	"github.com/spf13/cobra"
 
-	"github.com/pixelfactoryio/previo/internal/config"
-	"github.com/pixelfactoryio/previo/internal/github"
-	"github.com/pixelfactoryio/previo/internal/gitops"
-	"github.com/pixelfactoryio/previo/internal/server"
+	"github.com/doublurehq/doublure/internal/config"
+	"github.com/doublurehq/doublure/internal/github"
+	"github.com/doublurehq/doublure/internal/gitops"
+	"github.com/doublurehq/doublure/internal/server"
 )
 
 func main() {
 	root := &cobra.Command{
-		Use:          "previo",
+		Use:          "doublure",
 		Short:        "Preview environment manager",
 		SilenceUsage: true,
 	}
@@ -150,7 +150,7 @@ func verifyAppCmd() *cobra.Command {
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "\nInstallations (%d):\n", len(insts))
 			if len(insts) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "  (none — install the App on an account before running `previo serve`)")
+				fmt.Fprintln(cmd.OutOrStdout(), "  (none — install the App on an account before running `doublure serve`)")
 			}
 			for _, ins := range insts {
 				fmt.Fprintf(cmd.OutOrStdout(), "  - id=%d  account=%s (%s)\n",
@@ -163,7 +163,7 @@ func verifyAppCmd() *cobra.Command {
 
 // readPrivateKey reads the PEM from GITHUB_PRIVATE_KEY_PATH or, falling back,
 // from inline GITHUB_PRIVATE_KEY. Mirrors the resolution used by config.Load
-// so `previo verify-app` and `previo serve` accept the same environment.
+// so `doublure verify-app` and `doublure serve` accept the same environment.
 func readPrivateKey() ([]byte, error) {
 	if path := os.Getenv("GITHUB_PRIVATE_KEY_PATH"); path != "" {
 		data, err := os.ReadFile(path) //nolint:gosec // path from trusted env var

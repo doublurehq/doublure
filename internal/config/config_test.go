@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pixelfactoryio/previo/internal/config"
+	"github.com/doublurehq/doublure/internal/config"
 )
 
 func setEnv(t *testing.T, vars map[string]string) {
@@ -22,7 +22,7 @@ func validEnv() map[string]string {
 		"GITHUB_WEBHOOK_SECRET":  "secret",
 		"GITHUB_INSTALLATION_ID": "67890",
 		"GITOPS_REPO":            "org/gitops-repo",
-		"PREVIO_DEPLOY_TOKEN":    "deploy-secret",
+		"DOUBLURE_DEPLOY_TOKEN":  "deploy-secret",
 	}
 }
 
@@ -102,12 +102,12 @@ func TestLoad_Valid(t *testing.T) {
 
 func TestLoad_MissingDeployToken(t *testing.T) {
 	env := validEnv()
-	delete(env, "PREVIO_DEPLOY_TOKEN")
+	delete(env, "DOUBLURE_DEPLOY_TOKEN")
 	setEnv(t, env)
 
 	_, err := config.Load()
 	if err == nil {
-		t.Fatal("expected error for missing PREVIO_DEPLOY_TOKEN")
+		t.Fatal("expected error for missing DOUBLURE_DEPLOY_TOKEN")
 	}
 }
 

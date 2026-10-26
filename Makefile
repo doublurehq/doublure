@@ -1,5 +1,5 @@
-BINARY := previo
-CMD := ./cmd/previo
+BINARY := doublure
+CMD := ./cmd/doublure
 
 .PHONY: build test lint docker-build dev-bootstrap dev-verify dev-serve
 

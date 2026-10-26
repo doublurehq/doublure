@@ -4,8 +4,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /previo ./cmd/previo
+RUN CGO_ENABLED=0 go build -o /doublure ./cmd/doublure
 
 FROM scratch
-COPY --from=builder /previo /previo
-ENTRYPOINT ["/previo"]
+COPY --from=builder /doublure /doublure
+ENTRYPOINT ["/doublure"]
