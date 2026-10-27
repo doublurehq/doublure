@@ -105,10 +105,7 @@ func runBootstrap(ctx context.Context, stdin io.Reader, stdout io.Writer, opts b
 	}
 	fmt.Fprintln(stdout)
 
-	state, err := randomHex(16)
-	if err != nil {
-		return fmt.Errorf("generating state: %w", err)
-	}
+	state := randomHex(16)
 
 	ln, err := net.Listen("tcp", manifestServerHost+":0")
 	if err != nil {
@@ -183,10 +180,7 @@ func runBootstrap(ctx context.Context, stdin io.Reader, stdout io.Writer, opts b
 	if writeErr := os.WriteFile(opts.pemPath, []byte(conv.GetPEM()), 0o600); writeErr != nil {
 		return fmt.Errorf("writing PEM: %w", writeErr)
 	}
-	deployToken, err := randomHex(32)
-	if err != nil {
-		return fmt.Errorf("generating deploy token: %w", err)
-	}
+	deployToken := randomHex(32)
 	envBody := renderEnv(envValues{
 		AppID:         conv.GetID(),
 		PEMPath:       opts.pemPath,
@@ -343,12 +337,12 @@ func readNgrokTunnel() (string, error) {
 	return "", errors.New("no https tunnel found in ngrok — start one with `ngrok http 8080`")
 }
 
-func randomHex(n int) (string, error) {
+// randomHex returns n random bytes hex-encoded. crypto/rand.Read never
+// returns an error.
+func randomHex(n int) string {
 	buf := make([]byte, n)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf), nil
+	_, _ = rand.Read(buf)
+	return hex.EncodeToString(buf)
 }
 
 // defaultAppName returns "doublure-dev-" plus 6 random lowercase hex chars.
