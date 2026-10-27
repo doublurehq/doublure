@@ -20,12 +20,16 @@ import (
 	"github.com/doublurehq/doublure/internal/config"
 	"github.com/doublurehq/doublure/internal/github"
 	"github.com/doublurehq/doublure/internal/gitops"
+	"github.com/doublurehq/doublure/internal/lifecycle"
 	"github.com/doublurehq/doublure/internal/server"
 )
 
 // shutdownTimeout bounds graceful shutdown: draining in-flight requests and
 // then background teardowns share it, inside the default 30s pod grace period.
 const shutdownTimeout = 25 * time.Second
+
+// cleanupTimeout bounds one cleanup sweep over every preview.
+const cleanupTimeout = 10 * time.Minute
 
 func main() {
 	root := &cobra.Command{
@@ -63,12 +67,10 @@ func serveCmd() *cobra.Command {
 				return fmt.Errorf("creating github app: %w", err)
 			}
 
-			owner, repo, ok := strings.Cut(cfg.GitOpsRepo, "/")
-			if !ok || owner == "" || repo == "" {
-				return fmt.Errorf("GITOPS_REPO must be 'owner/repo', got %q", cfg.GitOpsRepo)
+			gitopsClient, err := newGitopsClient(cfg)
+			if err != nil {
+				return err
 			}
-			ghClient := app.ClientForInstallation(cfg.InstallationID)
-			gitopsClient := gitops.NewClient(ghClient, owner, repo)
 
 			srv := server.NewServer(app, gitopsClient, cfg.DeployToken, cfg.InstallationID)
 			httpSrv := &http.Server{
@@ -100,14 +102,62 @@ func serveCmd() *cobra.Command {
 	}
 }
 
+// newGitopsClient builds the gitops repo client from cfg, authenticated as
+// the GitHub App installation.
+func newGitopsClient(cfg *config.Config) (*gitops.Client, error) {
+	owner, repo, ok := strings.Cut(cfg.GitOpsRepo, "/")
+	if !ok || owner == "" || repo == "" {
+		return nil, fmt.Errorf("GITOPS_REPO must be 'owner/repo', got %q", cfg.GitOpsRepo)
+	}
+	app, err := github.NewApp(github.AppConfig{
+		AppID:         cfg.AppID,
+		PrivateKey:    cfg.PrivateKey,
+		WebhookSecret: cfg.WebhookSecret,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating github app: %w", err)
+	}
+	return gitops.NewClient(app.ClientForInstallation(cfg.InstallationID), owner, repo), nil
+}
+
+// cleanupCmd runs one sweep over the gitops repo's previews: previews with no
+// pin are deleted, previews idle for longer than CLEANUP_TTL (when set) are
+// deleted, and pins of closed PRs are torn down.
 func cleanupCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "cleanup",
-		Short: "Clean up stale preview environments (not implemented yet)",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return errors.New("cleanup is not implemented yet")
+		Short: "Delete stale and expired preview environments",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+			ttl, err := parseCleanupTTL(os.Getenv("CLEANUP_TTL"))
+			if err != nil {
+				return err
+			}
+			client, err := newGitopsClient(cfg)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(cmd.Context(), cleanupTimeout)
+			defer cancel()
+			return lifecycle.Sweep(ctx, client, time.Now().UTC(), ttl)
 		},
 	}
+}
+
+// parseCleanupTTL parses CLEANUP_TTL. Empty means no expiry (0); otherwise it
+// must be a positive Go duration.
+func parseCleanupTTL(raw string) (time.Duration, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	ttl, err := time.ParseDuration(raw)
+	if err != nil || ttl <= 0 {
+		return 0, fmt.Errorf("CLEANUP_TTL must be a positive duration, got %q", raw)
+	}
+	return ttl, nil
 }
 
 // verifyAppCmd hits GET /app with App-JWT auth using GITHUB_APP_ID and the
