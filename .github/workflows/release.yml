@@ -101,5 +101,15 @@ jobs:
               exit 1
             fi
             helm package "$c" -d "$RUNNER_TEMP/charts"
-            helm push "$RUNNER_TEMP/charts/$name-$version.tgz" oci://ghcr.io/doublurehq/charts
+            # ghcr.io can briefly answer "not found" when helm tags a manifest it
+            # just accepted; pushing the same archive again only applies the tag.
+            for attempt in 1 2 3; do
+              if helm push "$RUNNER_TEMP/charts/$name-$version.tgz" oci://ghcr.io/doublurehq/charts; then
+                continue 2
+              fi
+              echo "helm push $name $version failed (attempt $attempt/3)"
+              sleep $((attempt * 10))
+            done
+            echo "::error::helm push $name $version failed after 3 attempts"
+            exit 1
           done
