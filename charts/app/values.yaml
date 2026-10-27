@@ -31,14 +31,10 @@ healthCheck:
     initialDelaySeconds: 3
     periodSeconds: 5
 
-postgres:
-  enabled: false
-  host: ""
-  port: 5432
-  superuser: ""
-  superuserPassword: ""
-  credentialsSecret: ""
-  initImage: "postgres:16-alpine"
-  migrationsPath: /migrations
-
 env: {}
+
+# Extra env sources (e.g. a Secret providing DATABASE_URL)
+envFrom: []
+
+# Extra init containers; strings are rendered with tpl, so `{{ .Values.image.tag }}` is the service's image tag
+initContainers: []
