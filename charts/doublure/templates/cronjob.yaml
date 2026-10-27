@@ -10,13 +10,16 @@ spec:
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
+      # One attempt per run: the next scheduled run is the retry, and a failed
+      # pod is kept for its logs.
+      backoffLimit: 0
       template:
         metadata:
           labels:
             app.kubernetes.io/instance: {{ .Release.Name }}
             app.kubernetes.io/component: cleanup
         spec:
-          restartPolicy: OnFailure
+          restartPolicy: Never
           serviceAccountName: {{ include "doublure.fullname" . }}
           {{- with .Values.imagePullSecrets }}
           imagePullSecrets:
