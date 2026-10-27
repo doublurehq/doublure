@@ -31,6 +31,10 @@ spec:
               args: ["cleanup"]
               env:
                 {{- include "doublure.env" . | nindent 16 }}
+                {{- with .Values.cleanup.ttl }}
+                - name: CLEANUP_TTL
+                  value: {{ . | quote }}
+                {{- end }}
               {{- with .Values.resources }}
               resources:
                 {{- toYaml . | nindent 16 }}
