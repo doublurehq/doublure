@@ -28,7 +28,7 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 Chart versioning:
 
 - Never hand-edit `version`/`appVersion` in `charts/doublure/Chart.yaml`; the release sets both.
-- A PR that changes `charts/preview-env` or `charts/app` must bump that chart's `version` (enforced by the `Charts` workflow).
+- A PR that changes `charts/preview-env` or `charts/app` must bump that chart's `version` (enforced by the required `lint` check of the `Charts` workflow).
 - Merged bumps are published to `oci://ghcr.io/doublurehq/charts` on the next push to `main`.
 
 ## License

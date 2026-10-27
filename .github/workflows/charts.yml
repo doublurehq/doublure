@@ -10,12 +10,6 @@ on:
       - "ct.yaml"
       - ".github/workflows/charts.yml"
   pull_request:
-    paths:
-      - "charts/**"
-      - "examples/**"
-      - "internal/preview/testdata/**"
-      - "ct.yaml"
-      - ".github/workflows/charts.yml"
 
 permissions:
   contents: read
