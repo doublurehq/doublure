@@ -157,7 +157,7 @@ Rules 1 and 2 re-check their condition on the freshly read file, and again after
 
 Known limit: the GitHub contents API lists at most 1,000 entries per directory, so the sweep sees at most 1,000 previews.
 
-doublure never touches data stores: data lifecycle belongs to the service chart. Data that lives in the preview namespace is pruned with it.
+doublure never touches data stores; see [Preview data](#preview-data).
 
 ## Configuration
 
