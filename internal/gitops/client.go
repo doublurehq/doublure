@@ -355,10 +355,10 @@ func (c *Client) DeletePreviewWithRetry(
 		return nil, err
 	}
 
+	if !stillDelete(*existing) {
+		return &DeleteResult{}, nil
+	}
 	for attempt := 1; attempt <= MaxWriteRetries; attempt++ {
-		if !stillDelete(*existing) {
-			return &DeleteResult{}, nil
-		}
 		commitURL, delErr := c.deletePreview(ctx, slug, sha, message)
 		if delErr == nil {
 			return &DeleteResult{Deleted: true, Values: *existing, CommitURL: commitURL}, nil
@@ -376,6 +376,9 @@ func (c *Client) DeletePreviewWithRetry(
 		}
 		if err != nil {
 			return nil, fmt.Errorf("conflict re-fetch: %w", err)
+		}
+		if !stillDelete(*existing) {
+			return &DeleteResult{}, nil
 		}
 	}
 	return nil, fmt.Errorf("delete %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)

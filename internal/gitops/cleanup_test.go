@@ -169,6 +169,24 @@ func TestDeletePreviewWithRetry_ConflictThenRecheckFalse(t *testing.T) {
 	}
 }
 
+func TestDeletePreviewWithRetry_LastConflictThenRecheckFalse(t *testing.T) {
+	gets := slices.Repeat([]fileState{{sha: "blob-1", body: onlyPR42}}, gitops.MaxWriteRetries)
+	g := &teardownGitHub{
+		gets:   append(gets, fileState{sha: "blob-2", body: pr42AndPR7}),
+		writes: slices.Repeat([]int{http.StatusConflict}, gitops.MaxWriteRetries),
+	}
+	res, err := runDelete(t, g, singlePin)
+	if err != nil {
+		t.Fatalf("DeletePreviewWithRetry: %v", err)
+	}
+	if res.Deleted {
+		t.Errorf("result = %+v, want nothing deleted", res)
+	}
+	if got := len(g.requests()); got != gitops.MaxWriteRetries {
+		t.Errorf("deletes = %d, want %d", got, gitops.MaxWriteRetries)
+	}
+}
+
 func TestDeletePreviewWithRetry_NotFound(t *testing.T) {
 	cases := []struct {
 		name    string
