@@ -8,7 +8,6 @@ Shipped so far: [CHANGELOG.md](../CHANGELOG.md) and [GitHub releases](https://gi
 
 | # | Change | Goal | Depends on |
 |---|---|---|---|
-| 2 | **Per-preview data, owned by the service chart**: document that doublure never drops data. A chart names its data per preview from the release name (the slug), and data inside the preview namespace is pruned with it. Add a Postgres catalog service to the demo, so each preview gets its own database and teardown removes it. Replace the `app` chart's demo-grade Postgres defaults (password = service name, `sslmode=disable`) | data isolation | — |
 | 5 | **CI integration**: reusable GitHub Action calling `/v1/deploy` | build once, deploy many | — |
 | 6 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | — |
 | 7 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 5, 9 |

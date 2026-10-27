@@ -21,8 +21,14 @@ healthCheck:
     initialDelaySeconds: 3
     periodSeconds: 5
 
-postgres:
-  enabled: false
-
 env:
   FOO: bar
+
+envFrom:
+  - secretRef:
+      name: acme-db
+
+initContainers:
+  - name: acme-init
+    image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    command: ["true"]

@@ -44,6 +44,27 @@ jobs:
           docker run --rm -v "$PWD":/w -w /w quay.io/helmpack/chart-testing:v3.15.0 \
             sh -c 'git config --global --add safe.directory /w && ct lint --config ct.yaml --excluded-charts doublure'
 
+      - name: Render app with envFrom and initContainers
+        run: |
+          deploy=$(helm template backend-1 charts/app -f charts/app/ci/test-values.yaml | yq -N 'select(.kind == "Deployment")')
+          got=$(echo "$deploy" | yq -N '.spec.template.spec.initContainers[] | select(.name == "acme-init") | .image')
+          if [ "$got" != 'ghcr.io/acme/backend-1:latest' ]; then
+            echo '::error::expected init container acme-init to render image ghcr.io/acme/backend-1:latest through tpl'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+          got=$(echo "$deploy" | yq -N '.spec.template.spec.containers[0].envFrom[0].secretRef.name')
+          if [ "$got" != 'acme-db' ]; then
+            echo '::error::expected envFrom[0].secretRef.name "acme-db" on the main container'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+          got=$(echo "$deploy" | yq -N '[.spec.template.spec.initContainers[] | select(.name == "pg-setup" or .name == "migrate")] | length')
+          if [ "$got" != '0' ]; then
+            echo '::error::expected no pg-setup or migrate init containers'
+            exit 1
+          fi
+
       - name: Render preview-env with doublure values
         run: |
           out=$(helm template preview-x charts/preview-env -f internal/preview/testdata/values.golden.yaml -f - <<'EOF'

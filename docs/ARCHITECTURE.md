@@ -104,10 +104,21 @@ The `preview-env` chart ([`application.yaml`](../charts/preview-env/templates/ap
 - A Helm parameter `app.image.tag`: the service chart declares the [`app`](../charts/app) chart as a dependency aliased `app`.
 - Images tagged with the full git commit SHA: pinned services use the `commitSha` sent to `/v1/deploy`, main-tracking services use `$ARGOCD_APP_REVISION`.
 - For services in `preview.expose`: ingress enabled and a Helm parameter `app.ingress.host` setting the ingress host. Otherwise the PR-comment link is dead.
+- A service whose image is not built per commit (for example a database) may ignore `app.image.tag`.
 
 These values are fixed in the chart today; making them configurable is on the [roadmap](ROADMAP.md).
 
 The ApplicationSet example sources `preview-env` from an OCI registry (`oci://` with `path: "."`), which requires Argo CD 3.1 or later.
+
+## Preview data
+
+doublure never reads, writes or drops data stores.
+
+- A preview's identity is its slug: both the Helm release name of `preview-env` and the preview namespace.
+- Each service's release name is the service name, so per-preview data is keyed by namespace.
+- Data that lives in the preview namespace is pruned with it on teardown, sweep or expiry.
+- Data outside the namespace is owned, and dropped, by whatever provisions it.
+- The [`app`](../charts/app) chart only offers `envFrom` and `initContainers` to wire a data provider.
 
 ## HTTP API
 
@@ -146,7 +157,7 @@ Rules 1 and 2 re-check their condition on the freshly read file, and again after
 
 Known limit: the GitHub contents API lists at most 1,000 entries per directory, so the sweep sees at most 1,000 previews.
 
-doublure never touches data stores: data lifecycle belongs to the service chart. Data that lives in the preview namespace is pruned with it.
+doublure never touches data stores; see [Preview data](#preview-data).
 
 ## Configuration
 
