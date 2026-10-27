@@ -333,22 +333,35 @@ func TestSweep_ClosedPRTearsDown(t *testing.T) {
 }
 
 func TestSweep_PRStateUnknownKeepsPin(t *testing.T) {
-	capture := captureLogs(t)
-	f := &fakeAPI{
-		previews: []string{"feature-x"},
-		files:    map[string]*preview.PreviewValues{"feature-x": values(pin("backend-1", pr42, recent))},
-		prErr:    map[string]error{"acme/backend-1#42": gitops.ErrNotFound},
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{name: "404", err: gitops.ErrNotFound},
+		{name: "500", err: errors.New("GET pulls/42: 500 boom")},
 	}
-	if err := lifecycle.Sweep(context.Background(), f, now, ttl); err != nil {
-		t.Fatalf("Sweep: %v", err)
-	}
-	if len(f.teardowns) != 0 || len(f.deletes) != 0 {
-		t.Errorf("teardowns=%v deletes=%v, want none", f.teardowns, f.deletes)
-	}
-	logs := capture.find(slog.LevelWarn, "cleanup pr state unknown")
-	if len(logs) != 1 || logs[0]["slug"].String() != "feature-x" || logs[0]["repo"].String() != "acme/backend-1" ||
-		logs[0]["pr_number"].Int64() != 42 || logs[0]["err"].String() != gitops.ErrNotFound.Error() {
-		t.Errorf("pr state unknown logs = %v", logs)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			capture := captureLogs(t)
+			f := &fakeAPI{
+				previews: []string{"feature-x"},
+				files:    map[string]*preview.PreviewValues{"feature-x": values(pin("backend-1", pr42, recent))},
+				prErr:    map[string]error{"acme/backend-1#42": tc.err},
+			}
+			if err := lifecycle.Sweep(context.Background(), f, now, ttl); err != nil {
+				t.Fatalf("Sweep: %v", err)
+			}
+			if len(f.teardowns) != 0 || len(f.deletes) != 0 || len(f.fanOuts) != 0 || len(f.upserts) != 0 {
+				t.Errorf("teardowns=%v deletes=%v fanOuts=%d upserts=%v, want none",
+					f.teardowns, f.deletes, len(f.fanOuts), f.upserts)
+			}
+			logs := capture.find(slog.LevelWarn, "cleanup pr state unknown")
+			if len(logs) != 1 || logs[0]["slug"].String() != "feature-x" ||
+				logs[0]["repo"].String() != "acme/backend-1" ||
+				logs[0]["pr_number"].Int64() != 42 || logs[0]["err"].String() != tc.err.Error() {
+				t.Errorf("pr state unknown logs = %v", logs)
+			}
+		})
 	}
 }
 

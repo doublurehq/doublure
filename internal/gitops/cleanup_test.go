@@ -55,42 +55,52 @@ func TestListPreviews_NotFound(t *testing.T) {
 
 func TestPullRequestOpen(t *testing.T) {
 	cases := []struct {
-		name    string
-		status  int
-		body    string
-		want    bool
-		wantErr error
+		name       string
+		status     int
+		body       string
+		want       bool
+		wantErr    error
+		wantAnyErr bool
 	}{
 		{name: "open", status: http.StatusOK, body: `{"state":"open"}`, want: true},
 		{name: "closed", status: http.StatusOK, body: `{"state":"closed"}`, want: false},
 		{name: "not found", status: http.StatusNotFound, body: `{"message":"Not Found"}`, wantErr: gitops.ErrNotFound},
+		{name: "server error", status: http.StatusInternalServerError, body: `{"message":"boom"}`, wantAnyErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/repos/acme/backend-1/pulls/42" {
-					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-				}
-				w.WriteHeader(tc.status)
-				_, _ = io.WriteString(w, tc.body)
-			}))
-			defer srv.Close()
-
-			got, err := newClient(t, srv).PullRequestOpen(context.Background(), "acme", "backend-1", 42)
-			if tc.wantErr != nil {
+			got, err := pullRequestOpen(t, tc.status, tc.body)
+			switch {
+			case tc.wantErr != nil:
 				if !errors.Is(err, tc.wantErr) {
 					t.Fatalf("err = %v, want %v", err, tc.wantErr)
 				}
-				return
-			}
-			if err != nil {
+			case tc.wantAnyErr:
+				if err == nil {
+					t.Fatalf("PullRequestOpen = %v, nil; want an error", got)
+				}
+			case err != nil:
 				t.Fatalf("PullRequestOpen: %v", err)
-			}
-			if got != tc.want {
+			case got != tc.want:
 				t.Errorf("PullRequestOpen = %v, want %v", got, tc.want)
 			}
 		})
 	}
+}
+
+// pullRequestOpen calls PullRequestOpen on acme/backend-1#42 against a server
+// answering status and body.
+func pullRequestOpen(t *testing.T, status int, body string) (bool, error) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/repos/acme/backend-1/pulls/42" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+	return newClient(t, srv).PullRequestOpen(context.Background(), "acme", "backend-1", 42)
 }
 
 // singlePin reports whether exactly one entry of vals is pinned; it turns
