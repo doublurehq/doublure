@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	gh "github.com/google/go-github/v71/github"
@@ -76,6 +77,42 @@ func (c *Client) FetchServiceCatalog(ctx context.Context) (*ServiceCatalog, erro
 		return nil, fmt.Errorf("decode services.yaml: %w", err)
 	}
 	return ParseServices([]byte(raw))
+}
+
+// previewsDir is the gitops repo directory holding one subdirectory per preview.
+const previewsDir = "previews"
+
+// ListPreviews returns the sorted names of the directories under previews/.
+// A missing previews/ directory yields an empty slice. The contents API caps
+// a directory listing at 1,000 entries; this is not paginated.
+func (c *Client) ListPreviews(ctx context.Context) ([]string, error) {
+	_, entries, resp, err := c.gh.Repositories.GetContents(ctx, c.owner, c.repo, previewsDir, nil)
+	if err != nil {
+		err = classifyHTTPError(resp, err)
+		if errors.Is(err, ErrNotFound) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	slugs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.GetType() == "dir" {
+			slugs = append(slugs, e.GetName())
+		}
+	}
+	slices.Sort(slugs)
+	return slugs, nil
+}
+
+// PullRequestOpen reports whether owner/repo#number is open. A merged PR is
+// closed. Lookup failures (including 404 and 403) are returned as errors and
+// never reported as closed.
+func (c *Client) PullRequestOpen(ctx context.Context, owner, repo string, number int) (bool, error) {
+	pr, resp, err := c.gh.PullRequests.Get(ctx, owner, repo, number)
+	if err != nil {
+		return false, classifyHTTPError(resp, err)
+	}
+	return pr.GetState() == "open", nil
 }
 
 // previewPath returns the gitops repo path for a preview slug's values file.
@@ -288,6 +325,60 @@ func (c *Client) TeardownPreviewWithRetry(
 		}
 	}
 	return nil, fmt.Errorf("teardown %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)
+}
+
+// DeleteResult is the outcome of DeletePreviewWithRetry. Deleted is false
+// when nothing was deleted; Values then is empty. Values holds the content
+// that was deleted.
+type DeleteResult struct {
+	Deleted   bool
+	Values    preview.PreviewValues
+	CommitURL string
+}
+
+// DeletePreviewWithRetry deletes previews/<slug>/values.yaml with message,
+// provided stillDelete holds on the file read just before the delete. On a
+// 409 conflict the file is re-fetched and stillDelete re-checked, up to
+// MaxWriteRetries attempts. A stillDelete returning false, or a missing file
+// (on read, re-fetch or delete), deletes nothing: an empty DeleteResult and a
+// nil error.
+func (c *Client) DeletePreviewWithRetry(
+	ctx context.Context,
+	slug, message string,
+	stillDelete func(preview.PreviewValues) bool,
+) (*DeleteResult, error) {
+	existing, sha, err := c.GetPreview(ctx, slug)
+	if errors.Is(err, ErrNotFound) {
+		return &DeleteResult{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	for attempt := 1; attempt <= MaxWriteRetries; attempt++ {
+		if !stillDelete(*existing) {
+			return &DeleteResult{}, nil
+		}
+		commitURL, delErr := c.deletePreview(ctx, slug, sha, message)
+		if delErr == nil {
+			return &DeleteResult{Deleted: true, Values: *existing, CommitURL: commitURL}, nil
+		}
+		if errors.Is(delErr, ErrNotFound) {
+			return &DeleteResult{}, nil
+		}
+		if statusCode(delErr) != http.StatusConflict {
+			return nil, delErr
+		}
+		// 409 — re-fetch and re-check before trying again.
+		existing, sha, err = c.GetPreview(ctx, slug)
+		if errors.Is(err, ErrNotFound) {
+			return &DeleteResult{}, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("conflict re-fetch: %w", err)
+		}
+	}
+	return nil, fmt.Errorf("delete %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)
 }
 
 // FanOutPRComments posts (or updates) the same markdown body as a comment on
