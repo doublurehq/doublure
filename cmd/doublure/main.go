@@ -94,10 +94,9 @@ func serveCmd() *cobra.Command {
 func cleanupCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "cleanup",
-		Short: "Clean up stale preview environments",
+		Short: "Clean up stale preview environments (not implemented yet)",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			slog.Info("cleanup command called") //nolint:sloglint // no context available in stub
-			return nil
+			return errors.New("cleanup is not implemented yet")
 		},
 	}
 }
