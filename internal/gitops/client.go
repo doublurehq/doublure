@@ -136,16 +136,8 @@ func (c *Client) WritePreview(ctx context.Context, slug string, vals preview.Pre
 	if sha != "" {
 		opts.SHA = gh.Ptr(sha)
 	}
-	var (
-		resp     *gh.Response
-		writeErr error
-		out      *gh.RepositoryContentResponse
-	)
-	if sha == "" {
-		out, resp, writeErr = c.gh.Repositories.CreateFile(ctx, c.owner, c.repo, previewPath(slug), opts)
-	} else {
-		out, resp, writeErr = c.gh.Repositories.UpdateFile(ctx, c.owner, c.repo, previewPath(slug), opts)
-	}
+	// Create and update are the same contents PUT; sha is only set on update.
+	out, resp, writeErr := c.gh.Repositories.UpdateFile(ctx, c.owner, c.repo, previewPath(slug), opts)
 	if writeErr != nil {
 		return "", classifyHTTPError(resp, writeErr)
 	}
