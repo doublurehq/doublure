@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/doublurehq/doublure/compare/v0.1.1...v0.2.0) (2026-10-27)
+
+
+### Features
+
+* show per-preview urls for exposed services ([#16](https://github.com/doublurehq/doublure/issues/16)) ([8c13e76](https://github.com/doublurehq/doublure/commit/8c13e76b399af7bcbb247841e0505dc6b8366e47))
+
 ## [0.1.1](https://github.com/doublurehq/doublure/compare/v0.1.0...v0.1.1) (2026-10-27)
 
 
