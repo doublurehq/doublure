@@ -87,6 +87,12 @@ runs:
           exit 1
         fi
 
+        if ! jq -e '(.preview_slug | type == "string" and length > 0)
+            and (.gitops_commit_url | type == "string" and length > 0)' <<<"$response" >/dev/null 2>&1; then
+          echo "::error::doublure deploy failed: unexpected response: ${response//$'\n'/ }"
+          exit 1
+        fi
+
         slug=$(jq -r '.preview_slug' <<<"$response")
         commit_url=$(jq -r '.gitops_commit_url' <<<"$response")
         {

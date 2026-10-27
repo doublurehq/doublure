@@ -41,7 +41,7 @@ The action runs only on `pull_request` events. On any other event it logs a noti
 | `preview-slug` | Slug of the preview the service was deployed to. |
 | `gitops-commit-url` | URL of the gitops commit that pinned the service. |
 
-The step fails on any non-2xx response and shows the server's `error`. Each entry of the response's `warnings` becomes a workflow warning.
+The step fails on any non-2xx response and shows the server's `error`. It also fails, without setting outputs, on a 2xx response that lacks `preview_slug` or `gitops_commit_url`. Each entry of the response's `warnings` becomes a workflow warning.
 
 ## Fork pull requests
 
