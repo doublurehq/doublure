@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	gh "github.com/google/go-github/v71/github"
@@ -248,9 +249,9 @@ func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValue
 			continue
 		}
 		owner, repo, prNumberStr := m[1], m[2], m[3]
-		var prNumber int
-		if _, scanErr := fmt.Sscanf(prNumberStr, "%d", &prNumber); scanErr != nil {
-			errs = append(errs, fmt.Errorf("service %s: bad pr-number in url: %w", svc.Name, scanErr))
+		prNumber, convErr := strconv.Atoi(prNumberStr)
+		if convErr != nil {
+			errs = append(errs, fmt.Errorf("service %s: bad pr-number in url: %w", svc.Name, convErr))
 			continue
 		}
 		if upsertErr := c.upsertPRComment(ctx, owner, repo, prNumber, marked); upsertErr != nil {
