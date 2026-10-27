@@ -1,35 +1,14 @@
 package server
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 )
 
-// logCapture is a minimal slog.Handler retaining every record, scoped to this
-// file's tests (the external webhook_test.go has its own in package server_test).
-type logCapture struct {
-	mu      sync.Mutex
-	entries []slog.Record
-}
-
-func (h *logCapture) Enabled(context.Context, slog.Level) bool { return true }
-
-func (h *logCapture) Handle(_ context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.entries = append(h.entries, r.Clone())
-	return nil
-}
-
-func (h *logCapture) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *logCapture) WithGroup(string) slog.Handler      { return h }
-
 func TestAccessLog(t *testing.T) {
-	capture := &logCapture{}
+	capture := &LogCapture{}
 	prev := slog.Default()
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
@@ -43,12 +22,11 @@ func TestAccessLog(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/deploy", http.NoBody))
 
-	capture.mu.Lock()
-	defer capture.mu.Unlock()
-	if len(capture.entries) != 1 {
-		t.Fatalf("got %d log records, want 1", len(capture.entries))
+	records := capture.Records()
+	if len(records) != 1 {
+		t.Fatalf("got %d log records, want 1", len(records))
 	}
-	r := capture.entries[0]
+	r := records[0]
 	if r.Message != "http request" {
 		t.Fatalf("message = %q, want 'http request'", r.Message)
 	}

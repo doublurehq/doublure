@@ -2,7 +2,6 @@ package server_test
 
 import (
 	"bytes"
-	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -13,7 +12,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 
 	"github.com/doublurehq/doublure/internal/github"
@@ -65,36 +63,12 @@ func newWebhookServerForInstallation(t *testing.T, allowedInstallationID int64) 
 		t.Fatalf("NewApp: %v", err)
 	}
 
-	capture := &captureHandler{}
+	capture := &server.LogCapture{}
 	prev := slog.Default()
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	return server.NewServer(app, nil, "test-deploy-token", allowedInstallationID), capture.records
-}
-
-// captureHandler is a minimal slog.Handler that retains every record.
-type captureHandler struct {
-	mu      sync.Mutex
-	entries []slog.Record
-}
-
-func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
-
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.entries = append(h.entries, r.Clone())
-	return nil
-}
-
-func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
-
-func (h *captureHandler) records() []slog.Record {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return append([]slog.Record(nil), h.entries...)
+	return server.NewServer(app, nil, "test-deploy-token", allowedInstallationID), capture.Records
 }
 
 // signedRequest builds a POST to /webhooks/github with a valid HMAC-SHA256
