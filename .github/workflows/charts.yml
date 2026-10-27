@@ -76,6 +76,7 @@ jobs:
                 path: /docs
           EOF
           )
+          # shellcheck disable=SC2016
           got=$(echo "$out" | yq -N 'select(.kind == "Application") | .metadata.name as $app | .spec.source.helm.parameters[] | select(.name == "app.ingress.host") | $app + " " + .value')
           want='feature-pricing-backend-1 backend-1-feature-pricing.127.0.0.1.nip.io
           feature-pricing-front front-feature-pricing.127.0.0.1.nip.io'
