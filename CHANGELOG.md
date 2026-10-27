@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/doublurehq/doublure/compare/v0.4.0...v0.4.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* run the cleanup job once per schedule ([#25](https://github.com/doublurehq/doublure/issues/25)) ([ebfa068](https://github.com/doublurehq/doublure/commit/ebfa068322b6f8e7096826cf8cb38f2119908cea))
+
 ## [0.4.0](https://github.com/doublurehq/doublure/compare/v0.3.0...v0.4.0) (2026-10-27)
 
 
