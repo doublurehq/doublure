@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  deploy-action:
     runs-on: ubuntu-24.04
     env:
       STUB_DIR: /tmp/doublure-stub
