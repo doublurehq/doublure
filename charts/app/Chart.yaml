@@ -1,6 +1,6 @@
 apiVersion: v2
 name: app
 description: Generic service chart for doublure demo services
-version: 0.3.2
+version: 0.1.0
 appVersion: "0.1.0"
 home: https://github.com/doublurehq/doublure
