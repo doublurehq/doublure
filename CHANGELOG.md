@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/doublurehq/doublure/compare/v0.2.0...v0.2.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* quote preview metadata safely and replace hand-rolled helpers ([#19](https://github.com/doublurehq/doublure/issues/19)) ([8aee7db](https://github.com/doublurehq/doublure/commit/8aee7db82ba00fded045853e8a7d9b5aa6ab5032))
+
 ## [0.2.0](https://github.com/doublurehq/doublure/compare/v0.1.1...v0.2.0) (2026-10-27)
 
 
