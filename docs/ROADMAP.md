@@ -13,6 +13,7 @@ v1 = anyone can install doublure on their own cluster and get the full loop desc
 | ✅ | OSS repo baseline: LICENSE (Apache-2.0), README, CONTRIBUTING, SECURITY; CI on ubuntu-24.04 | doublure #4, #5 |
 | ✅ | Webhook installation allow-list | doublure #7 |
 | ✅ | Charts in doublure (preview-env, app, doublure), ApplicationSet example | doublure #8 |
+| ✅ | Release pipeline: release-please, multi-arch image, OCI charts; demo setup on doublure charts | doublure #9, #10, #11, #12 |
 
 ## v1
 
@@ -22,10 +23,9 @@ v1 = anyone can install doublure on their own cluster and get the full loop desc
 | 5 | **Per-preview data isolation**: database named per preview (not per service), created on deploy, dropped on teardown | data isolation | — |
 | 6 | **Teardown on PR close**: `pull_request` closed → remove service from preview; delete `previews/<slug>/` when no open PR remains | lifecycle | — |
 | 7 | **Cleanup sweeper**: `doublure cleanup` (port akpe-cleanup runner, stale resolver, gitops plugin) + TTL | zombie cost | 5 |
-| 8 | **Release pipeline**: multi-arch image to ghcr.io and charts as OCI on tag, changelog; switch demo-gitops, demo services and infra from akpe-charts to `oci://ghcr.io/doublurehq/charts` | deployable by anyone | — |
-| 9 | **CI integration**: reusable GitHub Action calling `/v1/deploy`; switch backend-1/2/front off akpe-workflows | build once, deploy many | 8 |
+| 9 | **CI integration**: reusable GitHub Action calling `/v1/deploy` | build once, deploy many | — |
 | 10 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | 6, 7 |
-| 11 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 8, 9 |
+| 11 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 9 |
 | 12 | **E2E demo**: agent-opened PR → preview → tests against preview URL → merge → teardown  | validate AI output | all |
 
 ## Non-goals

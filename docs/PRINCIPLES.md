@@ -18,6 +18,6 @@ Not a SaaS. Single-tenant, installed in the user's own cluster with their own Gi
 | Right-size for cost | `preview-env` chart profile: one small replica per service | ⚠️ chart-level, not enforced |
 | Measure (DORA, spin-up time) | Dashboard: live previews, spin-up time, teardowns, zombies swept | ❌ |
 | Validate AI output in a running system before it touches main | E2E demo: agent-opened PR → preview → tests against preview URL → merge → teardown | ❌ |
-| Start small, evolve | v0 ([akpe-workflows](https://github.com/amine7536/akpe-workflows) CI action + [akpe-cleanup](https://github.com/amine7536/akpe-cleanup) CronJob) → doublure (GitHub App + API) | ✅ documented |
+| Start small, evolve | v0 (a CI action plus a cleanup CronJob) → doublure (GitHub App + API) | ✅ documented |
 
 Roadmap to close the gaps: [ROADMAP.md](ROADMAP.md).
