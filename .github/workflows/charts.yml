@@ -118,6 +118,26 @@ jobs:
       - name: Render doublure with all components
         run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true
 
+      - name: Render doublure cleanup TTL
+        run: |
+          # Prints "CronJob:" then its CLEANUP_TTL as "<tag> <value>"; nothing without a CronJob.
+          ttl_env() {
+            helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set "cleanup.enabled=true$1" \
+              | yq -N 'select(.kind == "CronJob") | .kind + ":" + ([.spec.jobTemplate.spec.template.spec.containers[0].env[] | select(.name == "CLEANUP_TTL") | .value | tag + " " + .] | join(","))'
+          }
+          got=$(ttl_env ,cleanup.ttl=168h)
+          if [ "$got" != 'CronJob:!!str 168h' ]; then
+            echo '::error::expected CLEANUP_TTL "168h" on the cleanup CronJob when cleanup.ttl is set'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+          got=$(ttl_env "")
+          if [ "$got" != 'CronJob:' ]; then
+            echo '::error::expected no CLEANUP_TTL on the cleanup CronJob when cleanup.ttl is unset'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+
       - name: Render doublure with numeric github ids
         run: |
           out=$(helm template t charts/doublure -f - <<'EOF'
