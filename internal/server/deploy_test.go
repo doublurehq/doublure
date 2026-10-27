@@ -15,8 +15,8 @@ import (
 )
 
 // fakeGitops captures calls and returns canned responses. Each field controls
-// one of the three methods on gitopsAPI. When servicesYAML is set, the catalog
-// is parsed from it instead of being taken from catalog.
+// one of the methods on gitopsAPI. When servicesYAML is set, the catalog is
+// parsed from it instead of being taken from catalog.
 type fakeGitops struct {
 	catalog      []string
 	servicesYAML string
@@ -25,12 +25,29 @@ type fakeGitops struct {
 	writeErr     error
 	fanOutErr    error
 
+	// teardownResult nil means TeardownPreviewWithRetry returns an empty
+	// result. A non-nil teardownGate blocks the call until it is closed.
+	teardownResult *gitops.TeardownResult
+	teardownErr    error
+	teardownGate   chan struct{}
+	teardownPanic  bool
+
 	capturedInputs   preview.DeployInputs
 	capturedCatalog  []string
 	capturedService  string
 	capturedSlug     string
 	fanOutBodyCalled bool
 	capturedSummary  string
+
+	teardownSlug   string
+	teardownOwner  string
+	teardownRepo   string
+	teardownNumber int
+	upserts        []struct {
+		owner, repo string
+		number      int
+		body        string
+	}
 }
 
 func (f *fakeGitops) FetchServiceCatalog(_ context.Context) (*gitops.ServiceCatalog, error) {
@@ -62,6 +79,36 @@ func (f *fakeGitops) FanOutPRComments(_ context.Context, _ preview.PreviewValues
 	f.fanOutBodyCalled = true
 	f.capturedSummary = body
 	return f.fanOutErr
+}
+
+func (f *fakeGitops) TeardownPreviewWithRetry(
+	_ context.Context,
+	slug, owner, repo string,
+	prNumber int,
+) (*gitops.TeardownResult, error) {
+	f.teardownSlug, f.teardownOwner, f.teardownRepo, f.teardownNumber = slug, owner, repo, prNumber
+	if f.teardownGate != nil {
+		<-f.teardownGate
+	}
+	if f.teardownPanic {
+		panic("fake teardown panic")
+	}
+	if f.teardownErr != nil {
+		return nil, f.teardownErr
+	}
+	if f.teardownResult == nil {
+		return &gitops.TeardownResult{}, nil
+	}
+	return f.teardownResult, nil
+}
+
+func (f *fakeGitops) UpsertPRComment(_ context.Context, owner, repo string, prNumber int, body string) error {
+	f.upserts = append(f.upserts, struct {
+		owner, repo string
+		number      int
+		body        string
+	}{owner, repo, prNumber, body})
+	return nil
 }
 
 func validBody() string {

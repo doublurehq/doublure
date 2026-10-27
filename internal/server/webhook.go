@@ -128,4 +128,7 @@ func (s *Server) handlePullRequest(ctx context.Context, e *gh.PullRequestEvent) 
 		slog.String("head_sha", e.GetPullRequest().GetHead().GetSHA()),
 		slog.String("pr_author", e.GetPullRequest().GetUser().GetLogin()),
 	)
+	if e.GetAction() == "closed" {
+		s.startTeardown(ctx, e)
+	}
 }

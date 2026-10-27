@@ -19,9 +19,9 @@ import (
 // without letting a stuck request pin a goroutine forever.
 const deployTimeout = 30 * time.Second
 
-// gitopsAPI is the subset of gitops.Client used by the deploy handler. Defined
-// here so tests can inject fakes without spinning up an httptest server for
-// every GitHub round-trip.
+// gitopsAPI is the subset of gitops.Client used by the deploy and teardown
+// handlers. Defined here so tests can inject fakes without spinning up an
+// httptest server for every GitHub round-trip.
 type gitopsAPI interface {
 	FetchServiceCatalog(ctx context.Context) (*gitops.ServiceCatalog, error)
 	WritePreviewWithRetry(
@@ -33,6 +33,12 @@ type gitopsAPI interface {
 		createMessage, updateMessage string,
 	) (*gitops.WriteResult, error)
 	FanOutPRComments(ctx context.Context, vals preview.PreviewValues, body string) error
+	TeardownPreviewWithRetry(
+		ctx context.Context,
+		slug, owner, repo string,
+		prNumber int,
+	) (*gitops.TeardownResult, error)
+	UpsertPRComment(ctx context.Context, owner, repo string, prNumber int, body string) error
 }
 
 // DeployRequest is the body of POST /v1/deploy. All fields are required; the

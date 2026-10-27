@@ -243,6 +243,13 @@ func TestWebhookMissingOptionalFields(t *testing.T) {
 	if got := attrs["head_ref"].String(); got != "" {
 		t.Errorf("head_ref = %q, want empty (field absent)", got)
 	}
+	skipped, ok := findRecord(records(), "preview teardown skipped")
+	if !ok {
+		t.Fatal("expected 'preview teardown skipped' log record")
+	}
+	if got := recordAttrs(skipped)["reason"].String(); got != "missing pr fields" {
+		t.Errorf("reason = %q, want 'missing pr fields'", got)
+	}
 }
 
 func TestWebhookForeignInstallation(t *testing.T) {
