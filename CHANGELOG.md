@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/doublurehq/doublure/compare/v0.4.1...v0.5.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* make the app chart data-agnostic ([#27](https://github.com/doublurehq/doublure/issues/27))
+
+### Features
+
+* make the app chart data-agnostic ([#27](https://github.com/doublurehq/doublure/issues/27)) ([37905a2](https://github.com/doublurehq/doublure/commit/37905a23f5d39dfc0cdeaa6ca6f96ea4fc317cdd))
+
 ## [0.4.1](https://github.com/doublurehq/doublure/compare/v0.4.0...v0.4.1) (2026-10-27)
 
 
