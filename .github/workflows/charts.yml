@@ -76,13 +76,9 @@ jobs:
                 path: /docs
           EOF
           )
-          got=$(echo "$out" | awk '
-            /^kind: / { kind = $2 }
-            /^  name: / && kind == "Application" { app = $2 }
-            /- name: app.ingress.host$/ { getline; print app, $2 }
-          ')
-          want='feature-pricing-backend-1 "backend-1-feature-pricing.127.0.0.1.nip.io"
-          feature-pricing-front "front-feature-pricing.127.0.0.1.nip.io"'
+          got=$(echo "$out" | yq -N 'select(.kind == "Application") | .metadata.name as $app | .spec.source.helm.parameters[] | select(.name == "app.ingress.host") | $app + " " + .value')
+          want='feature-pricing-backend-1 backend-1-feature-pricing.127.0.0.1.nip.io
+          feature-pricing-front front-feature-pricing.127.0.0.1.nip.io'
           if [ "$got" != "$want" ]; then
             echo "::error::unexpected app.ingress.host parameters"
             printf 'got:\n%s\nwant:\n%s\n' "$got" "$want"
