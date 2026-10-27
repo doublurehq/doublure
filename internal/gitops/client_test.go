@@ -54,7 +54,7 @@ func sampleInputs() preview.DeployInputs {
 		ServiceName:    "backend-1",
 		HeadRef:        "feature/add-pricing",
 		CommitSha:      "abc1234567890",
-		PRAuthor:       "amine",
+		PRAuthor:       "octocat",
 		PRURL:          "https://github.com/acme/backend-1/pull/42",
 		PRNumber:       "42",
 		Timestamp:      "2026-05-26T10:00:00Z",
@@ -64,12 +64,9 @@ func sampleInputs() preview.DeployInputs {
 
 func TestFetchServiceCatalog(t *testing.T) {
 	const servicesYAML = `serviceRepos:
-  backend-1:
-    repo: acme/backend-1
-  backend-2:
-    repo: acme/backend-2
-  front:
-    repo: acme/front
+  backend-1: https://github.com/acme/backend-1.git
+  backend-2: https://github.com/acme/backend-2.git
+  front: https://github.com/acme/front.git
 `
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/acme/gitops/contents/services.yaml" {
@@ -100,7 +97,7 @@ func TestGetPreview_Success(t *testing.T) {
   - name: backend-1
     commitSha: abc1234567890
     metadata:
-      pr-author: amine
+      pr-author: octocat
       pr-url: https://github.com/acme/backend-1/pull/42
       pr-number: '42'
       created-at: '2026-05-26T10:00:00Z'
@@ -235,7 +232,7 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
   - name: backend-1
     commitSha: oldsha
     metadata:
-      pr-author: amine
+      pr-author: octocat
       pr-url: https://github.com/acme/backend-1/pull/42
       pr-number: '42'
       created-at: '2026-05-26T09:00:00Z'
@@ -248,7 +245,7 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
   - name: backend-1
     commitSha: oldsha
     metadata:
-      pr-author: amine
+      pr-author: octocat
       pr-url: https://github.com/acme/backend-1/pull/42
       pr-number: '42'
       created-at: '2026-05-26T09:00:00Z'

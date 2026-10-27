@@ -59,7 +59,7 @@ func validBody() string {
 		"service": "backend-1",
 		"head_ref": "feature/add-pricing",
 		"commit_sha": "abc1234567890",
-		"pr_author": "amine",
+		"pr_author": "octocat",
 		"pr_url": "https://github.com/acme/backend-1/pull/42",
 		"pr_number": "42",
 		"workflow_run_url": "https://github.com/acme/backend-1/actions/runs/1"
@@ -132,7 +132,7 @@ func TestDeploy_MissingField(t *testing.T) {
 		"service": "backend-1",
 		"head_ref": "feature/x",
 		"commit_sha": "",
-		"pr_author": "amine",
+		"pr_author": "octocat",
 		"pr_url": "https://github.com/acme/backend-1/pull/1",
 		"pr_number": "1",
 		"workflow_run_url": "https://github.com/acme/backend-1/actions/runs/1"
@@ -227,7 +227,7 @@ func TestDeploy_UnknownField(t *testing.T) {
 		"service": "backend-1",
 		"head_ref": "feature/x",
 		"commit_sha": "abc",
-		"pr_author": "amine",
+		"pr_author": "octocat",
 		"pr_url": "https://github.com/acme/backend-1/pull/1",
 		"pr_number": "1",
 		"workflow_run_url": "https://github.com/acme/backend-1/actions/runs/1",

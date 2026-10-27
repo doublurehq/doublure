@@ -164,7 +164,7 @@ func TestWebhookDispatch(t *testing.T) {
 		{
 			name:      "pull_request",
 			eventType: "pull_request",
-			body:      `{"action":"opened","number":7,"installation":{"id":123},"repository":{"full_name":"acme/backend-1"},"pull_request":{"head":{"ref":"feature/x","sha":"deadbeef"},"user":{"login":"amine"}}}`,
+			body:      `{"action":"opened","number":7,"installation":{"id":123},"repository":{"full_name":"acme/backend-1"},"pull_request":{"head":{"ref":"feature/x","sha":"deadbeef"},"user":{"login":"octocat"}}}`,
 			wantMsg:   "webhook pull_request",
 			wantAttrs: map[string]string{"action": "opened", "repo": "acme/backend-1", "head_ref": "feature/x"},
 		},
