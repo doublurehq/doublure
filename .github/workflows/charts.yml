@@ -33,14 +33,22 @@ jobs:
           fetch-depth: 0
 
       - uses: azure/setup-helm@v5
+        with:
+          version: v4.3.1
 
       - name: helm lint
         run: for c in charts/*/; do helm lint "$c" -f "$c/ci/test-values.yaml"; done
 
-      - name: ct lint
+      - name: ct lint (all charts)
         run: |
           docker run --rm -v "$PWD":/w -w /w quay.io/helmpack/chart-testing:v3.15.0 \
             sh -c 'git config --global --add safe.directory /w && ct lint --config ct.yaml --all'
+
+      - name: ct lint (version bump on changed charts)
+        if: github.event_name == 'pull_request'
+        run: |
+          docker run --rm -v "$PWD":/w -w /w quay.io/helmpack/chart-testing:v3.15.0 \
+            sh -c 'git config --global --add safe.directory /w && ct lint --config ct.yaml --excluded-charts doublure'
 
       - name: Render preview-env with doublure values
         run: |
