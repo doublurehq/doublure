@@ -407,7 +407,8 @@ func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValue
 		}
 		prOpen, stateErr := c.PullRequestOpen(ctx, owner, repo, prNumber)
 		if stateErr != nil {
-			errs = append(errs, fmt.Errorf("service %s (%s/%s#%d): pr state: %w", svc.Name, owner, repo, prNumber, stateErr))
+			errs = append(errs,
+				fmt.Errorf("service %s (%s/%s#%d): pr state: %w", svc.Name, owner, repo, prNumber, stateErr))
 			continue
 		}
 		if !prOpen {
