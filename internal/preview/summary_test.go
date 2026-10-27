@@ -140,3 +140,35 @@ func TestBuildSummary_PreviewURLsDefaultToHTTPS(t *testing.T) {
 		t.Errorf("summary has an http link with tls on, got:\n%s", got)
 	}
 }
+
+func TestBuildSummary_PreviewURLPathEscaping(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "space and parenthesis",
+			path: "/a b)c",
+			want: ` · [front-feature-pricing.example.com/a b\)c](https://front-feature-pricing.example.com/a%20b%29c)`,
+		},
+		{
+			name: "query and fragment",
+			path: "/x?q=1#f",
+			want: " · [front-feature-pricing.example.com/x?q=1#f](https://front-feature-pricing.example.com/x?q=1#f)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := sampleInputs()
+			vals := preview.BuildPreviewValues(in.ServiceName, in.CommitSha, []string{"front"}, in)
+			urls := preview.URLConfig{Domain: "example.com", TLS: true, Expose: map[string]string{"front": tt.path}}
+
+			got := preview.BuildSummary("feature-pricing", vals, urls, "msg", "url")
+
+			if !strings.Contains(got, tt.want+"\n") {
+				t.Errorf("summary missing %q, got:\n%s", tt.want, got)
+			}
+		})
+	}
+}
