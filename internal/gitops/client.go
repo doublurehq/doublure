@@ -223,6 +223,73 @@ func (c *Client) WritePreviewWithRetry(
 	return nil, fmt.Errorf("write %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)
 }
 
+// TeardownResult is the outcome of TeardownPreviewWithRetry. Removed lists the
+// services unpinned from the closed PR; it is empty when there was nothing to
+// tear down. Values holds the written file and is set only when Deleted is
+// false.
+type TeardownResult struct {
+	Values        preview.PreviewValues
+	Removed       []string
+	Deleted       bool
+	CommitURL     string
+	CommitMessage string
+}
+
+// TeardownPreviewWithRetry unpins every service of previews/<slug>/values.yaml
+// deployed by the PR owner/repo#prNumber. The file is updated when other pins
+// remain and deleted otherwise. On a 409 conflict the file is re-fetched, the
+// unpin re-applied and update vs delete decided again, up to MaxWriteRetries
+// attempts. A missing file (on read, re-fetch or delete) or a PR that pinned
+// nothing is a no-op: an empty TeardownResult and a nil error.
+func (c *Client) TeardownPreviewWithRetry(
+	ctx context.Context,
+	slug, owner, repo string,
+	prNumber int,
+) (*TeardownResult, error) {
+	existing, sha, err := c.GetPreview(ctx, slug)
+	if errors.Is(err, ErrNotFound) {
+		return &TeardownResult{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	for attempt := 1; attempt <= MaxWriteRetries; attempt++ {
+		vals, removed, pinned := preview.UnpinPR(*existing, owner, repo, prNumber)
+		if len(removed) == 0 {
+			return &TeardownResult{}, nil
+		}
+		result := &TeardownResult{Removed: removed, Deleted: !pinned}
+		var writeErr error
+		if pinned {
+			result.Values = vals
+			result.CommitMessage = fmt.Sprintf("chore(preview): remove %s from %s", strings.Join(removed, ", "), slug)
+			result.CommitURL, writeErr = c.WritePreview(ctx, slug, vals, sha, result.CommitMessage)
+		} else {
+			result.CommitMessage = fmt.Sprintf("chore(preview): delete %s preview", slug)
+			result.CommitURL, writeErr = c.deletePreview(ctx, slug, sha, result.CommitMessage)
+			if errors.Is(writeErr, ErrNotFound) {
+				return &TeardownResult{}, nil
+			}
+		}
+		if writeErr == nil {
+			return result, nil
+		}
+		if statusCode(writeErr) != http.StatusConflict {
+			return nil, writeErr
+		}
+		// 409 — re-fetch, re-apply the unpin, decide again.
+		existing, sha, err = c.GetPreview(ctx, slug)
+		if errors.Is(err, ErrNotFound) {
+			return &TeardownResult{}, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("conflict re-fetch: %w", err)
+		}
+	}
+	return nil, fmt.Errorf("teardown %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)
+}
+
 // FanOutPRComments posts (or updates) the same markdown body as a comment on
 // every PR referenced in vals.Services.Metadata.pr-url. Failures on individual
 // services are collected but do not abort the loop — best-effort delivery.
@@ -231,7 +298,6 @@ func (c *Client) WritePreviewWithRetry(
 // (HTML comment), so subsequent runs find and update the existing comment
 // rather than spamming new ones.
 func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValues, body string) error {
-	marked := PRCommentMarker + "\n" + body
 	var errs []error
 	for _, svc := range vals.Services {
 		if svc.Metadata == nil || svc.Metadata.PRURL == "" {
@@ -243,11 +309,18 @@ func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValue
 			errs = append(errs, fmt.Errorf("service %s: unrecognized pr-url %q", svc.Name, prURL))
 			continue
 		}
-		if upsertErr := c.upsertPRComment(ctx, owner, repo, prNumber, marked); upsertErr != nil {
+		if upsertErr := c.UpsertPRComment(ctx, owner, repo, prNumber, body); upsertErr != nil {
 			errs = append(errs, fmt.Errorf("service %s (%s/%s#%d): %w", svc.Name, owner, repo, prNumber, upsertErr))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// UpsertPRComment posts body as doublure's comment on owner/repo#prNumber,
+// prefixed with PRCommentMarker: the existing marked comment is updated, or a
+// new one is created.
+func (c *Client) UpsertPRComment(ctx context.Context, owner, repo string, prNumber int, body string) error {
+	return c.upsertPRComment(ctx, owner, repo, prNumber, PRCommentMarker+"\n"+body)
 }
 
 // upsertPRComment finds an existing comment by marker and updates it, or
@@ -279,4 +352,21 @@ func (c *Client) upsertPRComment(ctx context.Context, owner, repo string, prNumb
 		return classifyHTTPError(createResp, createErr)
 	}
 	return nil
+}
+
+// deletePreview removes previews/<slug>/values.yaml at blob sha and returns
+// the html_url of the resulting commit.
+func (c *Client) deletePreview(ctx context.Context, slug, sha, message string) (string, error) {
+	opts := &gh.RepositoryContentFileOptions{
+		Message: gh.Ptr(message),
+		SHA:     gh.Ptr(sha),
+	}
+	out, resp, err := c.gh.Repositories.DeleteFile(ctx, c.owner, c.repo, previewPath(slug), opts)
+	if err != nil {
+		return "", classifyHTTPError(resp, err)
+	}
+	if out == nil {
+		return "", fmt.Errorf("delete %s: empty response", previewPath(slug))
+	}
+	return out.Commit.GetHTMLURL(), nil
 }
