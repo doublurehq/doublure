@@ -127,7 +127,7 @@ func TestGetPreview_Success(t *testing.T) {
 	if got := len(vals.Services); got != 3 {
 		t.Fatalf("len(Services) = %d, want 3", got)
 	}
-	if got := vals.Services[0].Metadata.Get(preview.MetaPRNumber); got != "42" {
+	if got := vals.Services[0].Metadata.PRNumber; got != "42" {
 		t.Errorf("metadata pr-number = %q, want 42", got)
 	}
 }

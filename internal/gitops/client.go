@@ -107,7 +107,7 @@ func (c *Client) GetPreview(ctx context.Context, slug string) (*preview.PreviewV
 }
 
 // marshalPreview encodes vals with the same indentation rules used for the
-// golden fixture (2-space indent, custom quoting via Metadata.MarshalYAML).
+// golden fixture (2-space indent).
 func marshalPreview(vals preview.PreviewValues) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
@@ -246,10 +246,10 @@ func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValue
 	marked := PRCommentMarker + "\n" + body
 	var errs []error
 	for _, svc := range vals.Services {
-		prURL := svc.Metadata.Get(preview.MetaPRURL)
-		if prURL == "" {
+		if svc.Metadata == nil || svc.Metadata.PRURL == "" {
 			continue
 		}
+		prURL := svc.Metadata.PRURL
 		m := prURLPattern.FindStringSubmatch(prURL)
 		if m == nil {
 			errs = append(errs, fmt.Errorf("service %s: unrecognized pr-url %q", svc.Name, prURL))
