@@ -2,3 +2,13 @@ serviceRepos:
   backend-1: "https://github.com/doublurehq/demo-backend-1.git"
   backend-2: "https://github.com/doublurehq/demo-backend-2.git"
   front:     "https://github.com/doublurehq/demo-front.git"
+
+# Per-preview URLs (optional): each exposed service gets the ingress host
+# <service>-<slug>.<domain> and a link in the PR comment.
+# preview:
+#   domain: previews.example.com  # lowercase bare domain; needs a wildcard DNS record for *.<domain>
+#   tls: true                     # optional, default true: https links (ingress TLS stays in the service chart)
+#   expose:
+#     front: {}
+#     backend-1:
+#       path: /docs               # optional, default "/": PR-comment link only

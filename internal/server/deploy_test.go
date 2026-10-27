@@ -15,23 +15,32 @@ import (
 )
 
 // fakeGitops captures calls and returns canned responses. Each field controls
-// one of the three methods on gitopsAPI.
+// one of the three methods on gitopsAPI. When servicesYAML is set, the catalog
+// is parsed from it instead of being taken from catalog.
 type fakeGitops struct {
-	catalog     []string
-	catalogErr  error
-	writeResult *gitops.WriteResult
-	writeErr    error
-	fanOutErr   error
+	catalog      []string
+	servicesYAML string
+	catalogErr   error
+	writeResult  *gitops.WriteResult
+	writeErr     error
+	fanOutErr    error
 
 	capturedInputs   preview.DeployInputs
 	capturedCatalog  []string
 	capturedService  string
 	capturedSlug     string
 	fanOutBodyCalled bool
+	capturedSummary  string
 }
 
-func (f *fakeGitops) FetchServiceCatalog(_ context.Context) ([]string, error) {
-	return f.catalog, f.catalogErr
+func (f *fakeGitops) FetchServiceCatalog(_ context.Context) (*gitops.ServiceCatalog, error) {
+	if f.catalogErr != nil {
+		return nil, f.catalogErr
+	}
+	if f.servicesYAML != "" {
+		return gitops.ParseServices([]byte(f.servicesYAML))
+	}
+	return &gitops.ServiceCatalog{Services: f.catalog}, nil
 }
 
 func (f *fakeGitops) WritePreviewWithRetry(
@@ -49,8 +58,9 @@ func (f *fakeGitops) WritePreviewWithRetry(
 	return f.writeResult, f.writeErr
 }
 
-func (f *fakeGitops) FanOutPRComments(_ context.Context, _ preview.PreviewValues, _ string) error {
+func (f *fakeGitops) FanOutPRComments(_ context.Context, _ preview.PreviewValues, body string) error {
 	f.fanOutBodyCalled = true
+	f.capturedSummary = body
 	return f.fanOutErr
 }
 
@@ -237,5 +247,84 @@ func TestDeploy_UnknownField(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 for unknown field", rec.Code)
+	}
+}
+
+const servicesWithPreview = `serviceRepos:
+  backend-1: https://github.com/acme/backend-1.git
+  backend-2: https://github.com/acme/backend-2.git
+  front: https://github.com/acme/front.git
+preview:
+  domain: 127.0.0.1.nip.io
+  tls: false
+  expose:
+    front: {}
+    backend-1:
+      path: /docs
+`
+
+func previewWriteResult() *gitops.WriteResult {
+	return &gitops.WriteResult{
+		Values: preview.PreviewValues{Services: []preview.ServiceEntry{
+			{Name: "backend-1", CommitSha: "abc1234567890"},
+			{Name: "backend-2"},
+			{Name: "front"},
+		}},
+		CommitURL:     "https://github.com/acme/gitops/commit/deadbeef",
+		CommitMessage: "chore(preview): update backend-1 in feature-pricing",
+	}
+}
+
+func previewBody() string {
+	return strings.Replace(validBody(), "feature/add-pricing", "feature/pricing", 1)
+}
+
+func TestDeploy_PreviewURLsInSummary(t *testing.T) {
+	fg := &fakeGitops{servicesYAML: servicesWithPreview, writeResult: previewWriteResult()}
+	rec := postDeploy(t, newTestServer(t, fg), previewBody(), "test-token")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{
+		"- **front** · 🔄 `main` · [front-feature-pricing.127.0.0.1.nip.io/](http://front-feature-pricing.127.0.0.1.nip.io/)\n",
+		" · [backend-1-feature-pricing.127.0.0.1.nip.io/docs](http://backend-1-feature-pricing.127.0.0.1.nip.io/docs)\n",
+		"- **backend-2** · 🔄 `main`\n",
+	} {
+		if !strings.Contains(fg.capturedSummary, want) {
+			t.Errorf("summary missing %q, got:\n%s", want, fg.capturedSummary)
+		}
+	}
+	if strings.Contains(fg.capturedSummary, "backend-2-feature-pricing") {
+		t.Errorf("summary links non-exposed backend-2, got:\n%s", fg.capturedSummary)
+	}
+}
+
+func TestDeploy_PreviewURLsDefaultToHTTPS(t *testing.T) {
+	yml := strings.Replace(servicesWithPreview, "  tls: false\n", "", 1)
+	fg := &fakeGitops{servicesYAML: yml, writeResult: previewWriteResult()}
+	rec := postDeploy(t, newTestServer(t, fg), previewBody(), "test-token")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(fg.capturedSummary, "(https://front-feature-pricing.127.0.0.1.nip.io/)") {
+		t.Errorf("summary missing https front link, got:\n%s", fg.capturedSummary)
+	}
+}
+
+func TestDeploy_MalformedPreviewFails(t *testing.T) {
+	yml := strings.Replace(servicesWithPreview, "path: /docs", "path: docs", 1)
+	fg := &fakeGitops{servicesYAML: yml, writeResult: previewWriteResult()}
+	rec := postDeploy(t, newTestServer(t, fg), previewBody(), "test-token")
+
+	if rec.Code < http.StatusBadRequest {
+		t.Fatalf("status = %d, want an error (body: %s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "preview.expose.backend-1.path") {
+		t.Errorf("body must name the offending key, got: %s", rec.Body.String())
+	}
+	if fg.capturedSlug != "" || fg.fanOutBodyCalled {
+		t.Error("a malformed preview block must fail before any write or comment")
 	}
 }

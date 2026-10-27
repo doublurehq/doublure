@@ -8,14 +8,13 @@ Shipped so far: [CHANGELOG.md](../CHANGELOG.md) and [GitHub releases](https://gi
 
 | # | Change | Goal | Depends on |
 |---|---|---|---|
-| 1 | **Per-preview URL**: slug-scoped ingress host passed from preview-env chart to service charts; URL in PR comment | shareable URL | — |
 | 2 | **Per-preview data isolation**: database named per preview (not per service), created on deploy, dropped on teardown. Replace the `app` chart's demo-grade Postgres defaults (password = service name, `sslmode=disable`) | data isolation | — |
 | 3 | **Teardown on PR close**: `pull_request` closed → remove service from preview; delete `previews/<slug>/` when no open PR remains | lifecycle | — |
 | 4 | **Cleanup sweeper**: `doublure cleanup` finds stale previews (no open PR) and previews past their TTL, and deletes `previews/<slug>/` | zombie cost | 2 |
 | 5 | **CI integration**: reusable GitHub Action calling `/v1/deploy` | build once, deploy many | — |
 | 6 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | 3, 4 |
 | 7 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 5 |
-| 8 | **Slug length cap**: truncate and hash long branch slugs so they fit a 63-character namespace name | any branch name works | — |
+| 8 | **Slug length cap**: truncate and hash long branch slugs so they fit a 63-character namespace name and the `<service>-<slug>` host label | any branch name works | — |
 | 9 | **Configurable service-repo contract**: default branch, chart path and image-tag parameter, instead of `main`, `k8s/` and `app.image.tag` | fits existing repos | — |
 | 10 | **`bootstrap-app --webhook-url`**: create the App with a given webhook URL, for installs without ngrok | deployable by anyone | — |
 | 11 | **E2E demo**: agent-opened PR → preview → tests against preview URL → merge → teardown | validate AI output | all |

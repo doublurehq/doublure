@@ -46,8 +46,45 @@ jobs:
 
       - name: Render preview-env with doublure values
         run: |
-          out=$(helm template preview-x charts/preview-env -f examples/argocd/services.yaml -f internal/preview/testdata/values.golden.yaml)
+          out=$(helm template preview-x charts/preview-env -f internal/preview/testdata/values.golden.yaml -f - <<'EOF'
+          serviceRepos:
+            backend-1: https://github.com/acme/backend-1.git
+            backend-2: https://github.com/acme/backend-2.git
+            front: https://github.com/acme/front.git
+          EOF
+          )
           echo "$out" | grep -q 'preview.doublure.dev/pr-url'
+
+      - name: Render preview-env with per-preview hosts
+        run: |
+          out=$(helm template feature-pricing charts/preview-env -f - <<'EOF'
+          serviceRepos:
+            backend-1: https://github.com/acme/backend-1.git
+            backend-2: https://github.com/acme/backend-2.git
+            front: https://github.com/acme/front.git
+          services:
+            - name: backend-1
+              commitSha: abc123
+            - name: backend-2
+            - name: front
+          preview:
+            domain: 127.0.0.1.nip.io
+            tls: false
+            expose:
+              front: {}
+              backend-1:
+                path: /docs
+          EOF
+          )
+          # shellcheck disable=SC2016
+          got=$(echo "$out" | yq -N 'select(.kind == "Application") | .metadata.name as $app | .spec.source.helm.parameters[] | select(.name == "app.ingress.host") | $app + " " + .value')
+          want='feature-pricing-backend-1 backend-1-feature-pricing.127.0.0.1.nip.io
+          feature-pricing-front front-feature-pricing.127.0.0.1.nip.io'
+          if [ "$got" != "$want" ]; then
+            echo "::error::unexpected app.ingress.host parameters"
+            printf 'got:\n%s\nwant:\n%s\n' "$got" "$want"
+            exit 1
+          fi
 
       - name: Render doublure with all components
         run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true

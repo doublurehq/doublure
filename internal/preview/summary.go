@@ -20,9 +20,10 @@ func deriveCommitURL(prURL, sha string) string {
 
 // BuildSummary renders the markdown summary that doublure posts back as a PR
 // comment. Each service line shows the pinned commit (with a link if
-// derivable) or a 🔄 main badge for main-tracking entries. The trailing line
-// links to the gitops commit that recorded the change.
-func BuildSummary(slug string, values PreviewValues, commitMessage, commitURL string) string {
+// derivable) or a 🔄 main badge for main-tracking entries, followed by a link
+// to the service's preview host when urls exposes it. The trailing line links
+// to the gitops commit that recorded the change.
+func BuildSummary(slug string, values PreviewValues, urls URLConfig, commitMessage, commitURL string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## 🚀 Preview: `%s`\n\n", slug)
 	for _, svc := range values.Services {
@@ -43,10 +44,14 @@ func BuildSummary(slug string, values PreviewValues, commitMessage, commitURL st
 			if prURL != "" {
 				prPart = fmt.Sprintf(" · [PR #%s](%s)", prNumber, prURL)
 			}
-			fmt.Fprintf(&b, "- **%s** · %s%s\n", svc.Name, commitPart, prPart)
+			fmt.Fprintf(&b, "- **%s** · %s%s", svc.Name, commitPart, prPart)
 		} else {
-			fmt.Fprintf(&b, "- **%s** · 🔄 `main`\n", svc.Name)
+			fmt.Fprintf(&b, "- **%s** · 🔄 `main`", svc.Name)
 		}
+		if text, url, ok := urls.Link(svc.Name, slug); ok {
+			fmt.Fprintf(&b, " · [%s](%s)", text, url)
+		}
+		b.WriteString("\n")
 	}
 	b.WriteString("\n---\n")
 	fmt.Fprintf(&b, "🔗 [%s](%s)", commitMessage, commitURL)

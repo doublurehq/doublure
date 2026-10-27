@@ -62,8 +62,9 @@ func classifyHTTPError(resp *gh.Response, err error) error {
 }
 
 // FetchServiceCatalog reads services.yaml from the gitops repo and returns
-// the keys of its serviceRepos mapping (the canonical service catalog).
-func (c *Client) FetchServiceCatalog(ctx context.Context) ([]string, error) {
+// the keys of its serviceRepos mapping (the canonical service catalog) and its
+// validated `preview` block. A malformed `preview` block is an error.
+func (c *Client) FetchServiceCatalog(ctx context.Context) (*ServiceCatalog, error) {
 	content, _, resp, err := c.gh.Repositories.GetContents(ctx, c.owner, c.repo, "services.yaml", nil)
 	if err != nil {
 		return nil, classifyHTTPError(resp, err)
@@ -75,20 +76,7 @@ func (c *Client) FetchServiceCatalog(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode services.yaml: %w", err)
 	}
-	var doc struct {
-		ServiceRepos yaml.Node `yaml:"serviceRepos"`
-	}
-	if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
-		return nil, fmt.Errorf("parse services.yaml: %w", err)
-	}
-	if doc.ServiceRepos.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("services.yaml: missing 'serviceRepos' mapping")
-	}
-	catalog := make([]string, 0, len(doc.ServiceRepos.Content)/2)
-	for i := 0; i+1 < len(doc.ServiceRepos.Content); i += 2 {
-		catalog = append(catalog, doc.ServiceRepos.Content[i].Value)
-	}
-	return catalog, nil
+	return ParseServices([]byte(raw))
 }
 
 // previewPath returns the gitops repo path for a preview slug's values file.
