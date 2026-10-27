@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/doublurehq/doublure/compare/v0.1.0...v0.1.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* remove internal leftovers from docs and dev defaults ([#14](https://github.com/doublurehq/doublure/issues/14)) ([27ac922](https://github.com/doublurehq/doublure/commit/27ac922f8b56ac77aef85bb87c4300461536e879))
+
 ## 0.1.0 (2026-10-27)
 
 
