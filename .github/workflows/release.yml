@@ -92,9 +92,13 @@ jobs:
               echo "doublure chart is published only with a release"
               continue
             fi
-            if helm show chart "oci://ghcr.io/doublurehq/charts/$name" --version "$version" >/dev/null 2>&1; then
+            if out=$(helm show chart "oci://ghcr.io/doublurehq/charts/$name" --version "$version" 2>&1); then
               echo "$name $version already published"
               continue
+            fi
+            if ! echo "$out" | grep -qE ': not found|denied'; then
+              echo "::error::cannot check $name $version: $out"
+              exit 1
             fi
             helm package "$c" -d "$RUNNER_TEMP/charts"
             helm push "$RUNNER_TEMP/charts/$name-$version.tgz" oci://ghcr.io/doublurehq/charts
