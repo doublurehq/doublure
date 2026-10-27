@@ -12,7 +12,7 @@ When code is written at machine speed, the bottleneck is validating and integrat
 - Changed services run at their PR commit, everything else at `main`.
 - CI builds once; doublure only writes desired state. It never builds images and never touches the cluster.
 - Argo CD deploys from git.
-- Previews are torn down when their PR closes, and swept so they don't accumulate (the sweep is planned, see the [roadmap](docs/ROADMAP.md)).
+- Previews are torn down when their PR closes, and swept so they don't accumulate.
 
 ## How it works
 
@@ -20,7 +20,7 @@ When code is written at machine speed, the bottleneck is validating and integrat
 2. doublure writes `previews/<branch-slug>/values.yaml` to your gitops repo (through your GitHub App) and comments on every PR in that preview.
 3. An ArgoCD ApplicationSet picks up `previews/*` and deploys one namespace per preview, one Application per service.
 4. When a PR closes, doublure unpins its service in `previews/<slug>/values.yaml`, or deletes the file when no PR remains, and ArgoCD prunes the preview.
-5. Planned: when the preview is stale, `doublure cleanup` removes its directory and ArgoCD prunes it.
+5. `doublure cleanup` (an hourly CronJob) sweeps every preview: it deletes previews with no pinned service, or with no deploy within `CLEANUP_TTL` when set, and tears down the pins of closed PRs that step 4 missed. ArgoCD prunes what it removes.
 
 ```
 POST /v1/deploy
@@ -32,13 +32,13 @@ Authorization: Bearer $DOUBLURE_DEPLOY_TOKEN
 
 ## Status
 
-Early development. Working: GitHub App auth, `/v1/deploy`, gitops writes with conflict retry, PR comments, webhook verification. Not yet: cleanup sweeper.
+Early development. Working: GitHub App auth, `/v1/deploy`, gitops writes with conflict retry, PR comments, webhook verification.
 
 ## Usage
 
 ```bash
 doublure serve           # API + webhook server
-doublure cleanup         # stale preview cleanup (not implemented yet, exits with an error)
+doublure cleanup         # stale preview cleanup
 doublure bootstrap-app   # create a dev GitHub App (needs an ngrok tunnel; see DEVELOPMENT.md)
 doublure verify-app      # check GitHub App credentials, list installations
 ```
@@ -61,7 +61,7 @@ Local setup: [DEVELOPMENT.md](DEVELOPMENT.md).
 
 | Chart | Purpose |
 |---|---|
-| [`charts/doublure`](charts/doublure) | Installs the doublure server; the cleanup CronJob is disabled by default and not implemented yet |
+| [`charts/doublure`](charts/doublure) | Installs the doublure server; the cleanup CronJob is disabled by default |
 | [`charts/preview-env`](charts/preview-env) | One preview: AppProject, Namespace, one ArgoCD Application per service |
 | [`charts/app`](charts/app) | Generic service chart; service charts wrap it as a dependency aliased `app` |
 

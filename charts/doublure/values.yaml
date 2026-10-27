@@ -40,3 +40,6 @@ resources: {}
 cleanup:
   enabled: false
   schedule: "0 * * * *"
+  # Delete previews with no deploy for this long (CLEANUP_TTL), as a Go
+  # duration such as 168h; empty disables the TTL.
+  ttl: ""

@@ -14,7 +14,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
                                             └─ service chart (k8s/ in each service repo) at commitSha or main
 
  pull_request closed ──► doublure serve (async) ── unpins the PR's services, or deletes previews/<slug>/values.yaml ──► ArgoCD prunes
- doublure cleanup (CronJob, planned) ── deletes previews/<slug>/ for stale previews ──► ArgoCD prunes
+ doublure cleanup (CronJob) ── deletes stale previews/<slug>/, unpins closed PRs ──► ArgoCD prunes
 ```
 
 ## Components
@@ -22,7 +22,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
 | Component | Where | Notes |
 |---|---|---|
 | `doublure serve` | this repo | chi HTTP server: `/healthz`, `/v1/deploy`, `/webhooks/github` |
-| `doublure cleanup` | this repo | One-shot, CronJob. Not implemented yet: exits with an error (see [ROADMAP](ROADMAP.md)) |
+| `doublure cleanup` | this repo | One-shot, CronJob (hourly). Per preview, the first matching rule: no pinned service → delete; `CLEANUP_TTL` set and no deploy within it → delete; otherwise tear down every closed PR's pins (see [Cleanup sweep](#cleanup-sweep)) |
 | `doublure bootstrap-app` / `verify-app` | this repo | Create a GitHub App via the manifest flow / check credentials |
 | `preview-env` chart | this repo, [`charts/preview-env`](../charts/preview-env) | Renders AppProject, Namespace, one ArgoCD Application per service; Application annotations `preview.doublure.dev/*` carry the PR metadata |
 | ApplicationSet | this repo, [`examples/argocd`](../examples/argocd) | Git directory generator on `previews/*` |
@@ -132,7 +132,21 @@ Deploys are triggered only by CI calling `/v1/deploy`, never by `pull_request` w
 
 Teardown flow: a `pull_request` `closed` delivery (merged or not) is answered 200 at once, and the teardown runs in the background (20s budget; shutdown waits for it). doublure slugifies the PR's head branch, reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the closed PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The closed PR's comment is edited (or created) to say what was removed.
 
-Deleting the file drops `previews/<slug>/` from the git directory generator, and the ApplicationSet deletes the preview's Application and its resources. This requires the ApplicationSet controller policy `sync` (the default) or `create-delete`; with `create-only` or `create-update` a deleted preview keeps running. Previews whose branch was renamed after the deploy, and closes missed while doublure was down, are left for the cleanup sweeper.
+Deleting the file drops `previews/<slug>/` from the git directory generator, and the ApplicationSet deletes the preview's Application and its resources. This requires the ApplicationSet controller policy `sync` (the default) or `create-delete`; with `create-only` or `create-update` a deleted preview keeps running. Previews whose branch was renamed after the deploy, closes missed while doublure was down, and pins written by a deploy after the PR closed are caught by the cleanup sweeper.
+
+## Cleanup sweep
+
+`doublure cleanup` runs once per CronJob schedule (hourly by default). It lists `previews/*` and applies to each preview the first matching rule:
+
+1. **No pinned service**: the file is deleted (`chore(preview): delete <slug> preview`). No comment.
+2. **Expired** (only when `CLEANUP_TTL` is set): the newest `updated-at` of the pinned services is older than `CLEANUP_TTL`. The file is deleted (`chore(preview): expire <slug> preview`) and its open PRs get a comment saying the preview expired. A pinned service without a parseable `updated-at` never counts, so such a preview never expires.
+3. **Closed PRs**: every distinct PR pinning a service is looked up on GitHub. Each closed (or merged) PR goes through the same teardown as a `pull_request` `closed` delivery: unpin, update or delete, comments. A PR whose state can't be read (404, 403, any error) keeps its pins and is logged as a warning.
+
+Rules 1 and 2 re-check their condition on the freshly read file, and again after every 409, so a deploy landing during the sweep cancels the delete. A failing preview read or rule 1–2 delete is logged and the sweep goes on; the command then exits 1 and the CronJob retries it. A failing closed-PR teardown is only logged and retried on the next run. Comment fan-outs (deploy, teardown, expiry) skip closed PRs, so a closed PR keeps its teardown comment.
+
+Known limit: the GitHub contents API lists at most 1,000 entries per directory, so the sweep sees at most 1,000 previews.
+
+doublure never touches data stores: data lifecycle belongs to the service chart. Data that lives in the preview namespace is pruned with it.
 
 ## Configuration
 
@@ -144,6 +158,7 @@ GITHUB_INSTALLATION_ID
 GITOPS_REPO                 # owner/repo
 DOUBLURE_DEPLOY_TOKEN
 LISTEN_ADDR                 # default :8080
+CLEANUP_TTL                 # cleanup only, optional: Go duration (e.g. 168h); unset disables expiry
 ```
 
 GitHub App permissions: Contents R/W, Pull requests W, Metadata R. Subscribed event: `pull_request` (installation events are delivered automatically).

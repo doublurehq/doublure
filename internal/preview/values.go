@@ -1,6 +1,9 @@
 package preview
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // BuildPreviewValues constructs a fresh PreviewValues for a slug given the
 // service catalog. The triggering service (serviceName) is pinned to
@@ -80,4 +83,26 @@ func belongsToPR(entry ServiceEntry, owner, repo string, number int) bool {
 	}
 	o, r, n, ok := ParsePRURL(entry.Metadata.PRURL)
 	return ok && n == number && strings.EqualFold(o, owner) && strings.EqualFold(r, repo)
+}
+
+// LastDeploy returns the newest updated-at (RFC3339) across the pinned entries
+// of vals. Entries without a commitSha, without metadata or whose updated-at
+// does not parse are ignored. The bool is false when no pinned entry has a
+// parseable updated-at.
+func LastDeploy(vals PreviewValues) (time.Time, bool) {
+	var last time.Time
+	found := false
+	for _, svc := range vals.Services {
+		if svc.CommitSha == "" || svc.Metadata == nil {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, svc.Metadata.UpdatedAt)
+		if err != nil {
+			continue
+		}
+		if !found || t.After(last) {
+			last, found = t, true
+		}
+	}
+	return last, found
 }

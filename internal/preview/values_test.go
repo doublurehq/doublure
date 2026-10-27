@@ -3,6 +3,7 @@ package preview_test
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/doublurehq/doublure/internal/preview"
 )
@@ -256,5 +257,71 @@ func TestUnpinPR_DoesNotMutateInput(t *testing.T) {
 	}
 	if in.Services[0].CommitSha != "abc" || in.Services[0].Metadata == nil || in.Services[0].Metadata.PRURL != prURL {
 		t.Errorf("input mutated: %+v", in.Services[0])
+	}
+}
+
+func TestLastDeploy(t *testing.T) {
+	pinned := func(name, updatedAt string) preview.ServiceEntry {
+		return preview.ServiceEntry{Name: name, CommitSha: "abc", Metadata: &preview.Metadata{UpdatedAt: updatedAt}}
+	}
+	cases := []struct {
+		name   string
+		vals   preview.PreviewValues
+		want   string
+		wantOK bool
+	}{
+		{
+			name: "max over pins",
+			vals: preview.PreviewValues{Services: []preview.ServiceEntry{
+				pinned("backend-1", "2026-05-26T10:00:00Z"),
+				pinned("backend-2", "2026-05-27T09:00:00Z"),
+				pinned("front", "2026-05-25T12:00:00Z"),
+			}},
+			want:   "2026-05-27T09:00:00Z",
+			wantOK: true,
+		},
+		{
+			name: "pinless entries ignored",
+			vals: preview.PreviewValues{Services: []preview.ServiceEntry{
+				pinned("backend-1", "2026-05-26T10:00:00Z"),
+				{Name: "backend-2", Metadata: &preview.Metadata{UpdatedAt: "2026-06-01T00:00:00Z"}},
+				{Name: "front"},
+			}},
+			want:   "2026-05-26T10:00:00Z",
+			wantOK: true,
+		},
+		{
+			name: "unparseable updated-at ignored",
+			vals: preview.PreviewValues{Services: []preview.ServiceEntry{
+				pinned("backend-1", "not-a-time"),
+				pinned("backend-2", "2026-05-26T10:00:00Z"),
+				{Name: "front", CommitSha: "def"},
+			}},
+			want:   "2026-05-26T10:00:00Z",
+			wantOK: true,
+		},
+		{
+			name: "none parseable",
+			vals: preview.PreviewValues{Services: []preview.ServiceEntry{
+				pinned("backend-1", "2026-05-26"),
+				{Name: "backend-2", CommitSha: "def"},
+				{Name: "front"},
+			}},
+			wantOK: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := preview.LastDeploy(tc.vals)
+			if ok != tc.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if s := got.Format(time.RFC3339); s != tc.want {
+				t.Errorf("LastDeploy = %s, want %s", s, tc.want)
+			}
+		})
 	}
 }
