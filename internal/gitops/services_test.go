@@ -196,6 +196,37 @@ func TestParseServices_MalformedPreview(t *testing.T) {
 			"preview.expose.front.path",
 		},
 		{"expose without domain", "preview:\n  expose:\n    front: {}\n", "preview.expose"},
+		{"unknown preview key", "preview:\n  domian: example.com\n", "preview.domian: unknown key"},
+		{
+			"unknown preview key next to valid ones",
+			"preview:\n  domain: example.com\n  expsoe:\n    front: {}\n",
+			"preview.expsoe: unknown key",
+		},
+		{
+			"unknown expose entry key",
+			"preview:\n  domain: example.com\n  expose:\n    front:\n      paht: /docs\n",
+			"preview.expose.front.paht: unknown key",
+		},
+		{
+			"unknown key from a merge",
+			"base: &p\n  domian: example.com\npreview:\n  <<: *p\n",
+			"preview.domian: unknown key",
+		},
+		{
+			"duplicate preview key",
+			"preview:\n  domain: example.com\n  domain: example.org\n",
+			"preview.domain: duplicate key",
+		},
+		{
+			"duplicate expose entry",
+			"preview:\n  domain: example.com\n  expose:\n    front: {}\n    front: {}\n",
+			"preview.expose.front: duplicate key",
+		},
+		{
+			"duplicate path key",
+			"preview:\n  domain: example.com\n  expose:\n    front:\n      path: /a\n      path: /b\n",
+			"preview.expose.front.path: duplicate key",
+		},
 		{"merge of a scalar", "preview:\n  <<: 1\n  domain: example.com\n", "preview.<<"},
 		{"aliased domain not a string", "n: &n 42\npreview:\n  domain: *n\n", "preview.domain"},
 	}

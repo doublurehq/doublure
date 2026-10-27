@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -80,8 +81,9 @@ func malformed(key, format string, args ...any) error {
 // mappingValues returns the keys, in order, and the key → value nodes of the
 // mapping node n, named path in errors. Aliases are resolved and merge keys
 // (`<<`) are expanded as YAML does: explicit keys win over merged ones, and an
-// earlier merged map wins over a later one.
-func mappingValues(path string, n *yaml.Node) ([]string, map[string]*yaml.Node, error) {
+// earlier merged map wins over a later one. A key set twice is an error. When
+// allowed is non-nil, a key outside it is an error.
+func mappingValues(path string, n *yaml.Node, allowed ...string) ([]string, map[string]*yaml.Node, error) {
 	keys := make([]string, 0, len(n.Content)/pairStride)
 	vals := make(map[string]*yaml.Node, len(n.Content)/pairStride)
 	var merges []*yaml.Node
@@ -91,32 +93,52 @@ func mappingValues(path string, n *yaml.Node) ([]string, map[string]*yaml.Node, 
 			merges = append(merges, v)
 			continue
 		}
+		if _, dup := vals[k.Value]; dup {
+			return nil, nil, malformed(path+"."+k.Value, "duplicate key")
+		}
 		keys = append(keys, k.Value)
 		vals[k.Value] = v
 	}
 	for _, m := range merges {
-		sources := []*yaml.Node{m}
-		if m.Kind == yaml.SequenceNode {
-			sources = m.Content
+		var err error
+		if keys, err = mergeInto(path, keys, vals, m, allowed); err != nil {
+			return nil, nil, err
 		}
-		for _, src := range sources {
-			src = resolve(src)
-			if src.Kind != yaml.MappingNode {
-				return nil, nil, malformed(path+".<<", "must be a map or a list of maps")
-			}
-			srcKeys, srcVals, err := mappingValues(path, src)
-			if err != nil {
-				return nil, nil, err
-			}
-			for _, k := range srcKeys {
-				if _, set := vals[k]; !set {
-					keys = append(keys, k)
-					vals[k] = srcVals[k]
-				}
-			}
+	}
+	for _, k := range keys {
+		if allowed != nil && !slices.Contains(allowed, k) {
+			return nil, nil, malformed(path+"."+k, "unknown key")
 		}
 	}
 	return keys, vals, nil
+}
+
+// mergeInto adds to vals the keys of the merge value m (a map or a list of
+// maps) that are not set yet, and returns keys extended with them.
+func mergeInto(
+	path string, keys []string, vals map[string]*yaml.Node, m *yaml.Node, allowed []string,
+) ([]string, error) {
+	sources := []*yaml.Node{m}
+	if m.Kind == yaml.SequenceNode {
+		sources = m.Content
+	}
+	for _, src := range sources {
+		src = resolve(src)
+		if src.Kind != yaml.MappingNode {
+			return nil, malformed(path+".<<", "must be a map or a list of maps")
+		}
+		srcKeys, srcVals, err := mappingValues(path, src, allowed...)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range srcKeys {
+			if _, set := vals[k]; !set {
+				keys = append(keys, k)
+				vals[k] = srcVals[k]
+			}
+		}
+	}
+	return keys, nil
 }
 
 // parsePreview validates the `preview` block. An absent block or an absent
@@ -129,7 +151,7 @@ func parsePreview(n *yaml.Node) (preview.URLConfig, error) {
 	if n.Kind != yaml.MappingNode {
 		return preview.URLConfig{}, malformed("preview", "must be a map")
 	}
-	_, fields, err := mappingValues("preview", n)
+	_, fields, err := mappingValues("preview", n, "domain", "tls", "expose")
 	if err != nil {
 		return preview.URLConfig{}, err
 	}
@@ -198,9 +220,9 @@ func parseExpose(n *yaml.Node) (map[string]string, error) {
 	}
 	expose := make(map[string]string, len(names))
 	for _, name := range names {
-		path, err := parseExposeEntry(name, entries[name])
-		if err != nil {
-			return nil, err
+		path, entryErr := parseExposeEntry(name, entries[name])
+		if entryErr != nil {
+			return nil, entryErr
 		}
 		expose[name] = path
 	}
@@ -215,7 +237,7 @@ func parseExposeEntry(name string, n *yaml.Node) (string, error) {
 	if n.Kind != yaml.MappingNode {
 		return "", malformed(key, "must be empty or a map")
 	}
-	_, fields, err := mappingValues(key, n)
+	_, fields, err := mappingValues(key, n, "path")
 	if err != nil {
 		return "", err
 	}
