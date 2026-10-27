@@ -15,8 +15,7 @@ Local setup for doublure: ngrok tunnel, GitHub App, env, smoke test.
 # Terminal 1 — start the webhook tunnel
 ngrok http 8080
 
-# Terminal 2 — from services/doublure/
-cd services/doublure
+# Terminal 2 — from the repository root
 make dev-bootstrap         # shows a preflight plan, then (on y) creates the App + writes .env + PEM
 # (browser opens; click "Create GitHub App", then "Install" on the repos you want)
 # Paste the installation ID from the install URL into .env (GITHUB_INSTALLATION_ID=...)
@@ -45,7 +44,7 @@ Flags worth knowing:
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--name` | `doublure-dev-<hostname>` | App name (must be globally unique on GitHub) |
+| `--name` | `doublure-dev-<6 random hex chars>` | App name (must be globally unique on GitHub) |
 | `--owner` | (your personal account) | Org login if the App should live in an org |
 | `--gitops-repo` | (empty) | Pre-fills `GITOPS_REPO` in `.env` |
 | `--env-file` | `.env` | Where to write env vars |
@@ -136,7 +135,7 @@ If `make dev-bootstrap` doesn't work in your environment, create the App by hand
    - **Subscribe to events**: `pull_request` (installation / installation_repositories fire automatically — do not subscribe to them explicitly)
    - **Where can this be installed?**: Only on this account
 2. Click **Create GitHub App**. Note the **App ID** at the top of the page.
-3. Scroll to **Private keys** → **Generate a private key**. Move the downloaded `.pem` to `services/doublure/dev.private-key.pem`.
+3. Scroll to **Private keys** → **Generate a private key**. Move the downloaded `.pem` to `dev.private-key.pem` at the repository root.
 4. Install the App (left sidebar → **Install App**) on the gitops repo and service repos.
 5. Write `.env` manually:
 
