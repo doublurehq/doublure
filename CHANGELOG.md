@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/doublurehq/doublure/compare/v0.2.1...v0.3.0) (2026-10-27)
+
+
+### Features
+
+* tear down previews when a pull request closes ([#21](https://github.com/doublurehq/doublure/issues/21)) ([2db444a](https://github.com/doublurehq/doublure/commit/2db444aa0ab9b2346513eaf3233b1129b2e0c5ab))
+
 ## [0.2.1](https://github.com/doublurehq/doublure/compare/v0.2.0...v0.2.1) (2026-10-27)
 
 
