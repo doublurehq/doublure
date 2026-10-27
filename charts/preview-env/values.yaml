@@ -18,3 +18,16 @@
 services: []
 
 serviceRepos: {}
+
+# preview: per-preview URLs, usually set once in the gitops repo's services.yaml.
+# When preview.domain is set, each service listed in preview.expose gets the
+# Helm parameter app.ingress.host = <service>-<release name>.<domain>, the
+# release name being the preview slug. Without preview.domain nothing changes.
+#
+# preview:
+#   domain: 127.0.0.1.nip.io      # lowercase bare domain, parent of every preview host
+#   tls: false                    # optional, default true; only picks https/http in doublure's PR-comment links
+#   expose:                       # services that get a host; others get none
+#     front: {}                   # entry value: empty, {} or {path: ...}
+#     backend-1:
+#       path: /docs               # optional, default "/"; only used in doublure's PR-comment links

@@ -4,3 +4,8 @@ services:
 
 serviceRepos:
   backend-1: "https://github.com/doublurehq/demo-backend-1.git"
+
+preview:
+  domain: example.com
+  expose:
+    backend-1:
