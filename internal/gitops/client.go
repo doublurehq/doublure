@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 
 	gh "github.com/google/go-github/v71/github"
@@ -225,9 +223,6 @@ func (c *Client) WritePreviewWithRetry(
 	return nil, fmt.Errorf("write %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)
 }
 
-// prURLPattern extracts (owner, repo, prNumber) from a github.com PR URL.
-var prURLPattern = regexp.MustCompile(`^https://github\.com/([^/]+)/([^/]+)/pull/(\d+)`)
-
 // FanOutPRComments posts (or updates) the same markdown body as a comment on
 // every PR referenced in vals.Services.Metadata.pr-url. Failures on individual
 // services are collected but do not abort the loop — best-effort delivery.
@@ -243,15 +238,9 @@ func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValue
 			continue
 		}
 		prURL := svc.Metadata.PRURL
-		m := prURLPattern.FindStringSubmatch(prURL)
-		if m == nil {
+		owner, repo, prNumber, ok := preview.ParsePRURL(prURL)
+		if !ok {
 			errs = append(errs, fmt.Errorf("service %s: unrecognized pr-url %q", svc.Name, prURL))
-			continue
-		}
-		owner, repo, prNumberStr := m[1], m[2], m[3]
-		prNumber, convErr := strconv.Atoi(prNumberStr)
-		if convErr != nil {
-			errs = append(errs, fmt.Errorf("service %s: bad pr-number in url: %w", svc.Name, convErr))
 			continue
 		}
 		if upsertErr := c.upsertPRComment(ctx, owner, repo, prNumber, marked); upsertErr != nil {
