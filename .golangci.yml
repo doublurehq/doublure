@@ -98,15 +98,6 @@ linters:
       package-average: 10.0
     depguard:
       rules:
-        deprecated:
-          files: ["$all"]
-          deny:
-            - pkg: github.com/golang/protobuf
-              desc: Use google.golang.org/protobuf instead
-            - pkg: github.com/satori/go.uuid
-              desc: Use github.com/google/uuid instead
-            - pkg: github.com/gofrs/uuid$
-              desc: Use github.com/gofrs/uuid/v5 or later
         non-test files:
           files: ["!$test"]
           deny:
@@ -134,17 +125,10 @@ linters:
         - ^net/url.URL$
         - ^os/exec.Cmd$
         - ^reflect.StructField$
-        - ^github.com/Shopify/sarama.Config$
-        - ^github.com/Shopify/sarama.ProducerMessage$
-        - ^github.com/mitchellh/mapstructure.DecoderConfig$
-        - ^github.com/prometheus/client_golang/.+Opts$
         - ^github.com/spf13/cobra.Command$
         - ^github.com/spf13/cobra.CompletionOptions$
         - ^github.com/stretchr/testify/mock.Mock$
-        - ^github.com/testcontainers/testcontainers-go.+Request$
-        - ^github.com/testcontainers/testcontainers-go.FromDockerfile$
         - ^golang.org/x/tools/go/analysis.Analyzer$
-        - ^google.golang.org/protobuf/.+Options$
         - ^gopkg.in/yaml.v3.Node$
       allow-empty-returns: true
     funcorder:
@@ -185,8 +169,6 @@ linters:
         - os.Mkdir.*
         - os.OpenFile
         - os.WriteFile
-        - prometheus.ExponentialBuckets.*
-        - prometheus.LinearBuckets
     nakedret:
       max-func-lines: 0
     nolintlint:
@@ -197,8 +179,6 @@ linters:
       strconcat: false
     reassign:
       patterns: [".*"]
-    rowserrcheck:
-      packages: [github.com/jmoiron/sqlx]
     sloglint:
       no-global: all
       context: scope
