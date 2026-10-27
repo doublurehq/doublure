@@ -21,7 +21,7 @@ Authorization: Bearer $DOUBLURE_DEPLOY_TOKEN
 
 ## Status
 
-Early development. Working: GitHub App auth, `/v1/deploy`, gitops writes with conflict retry, PR comments, webhook verification. Not yet: teardown on PR close, cleanup sweeper, release images and published charts.
+Early development. Working: GitHub App auth, `/v1/deploy`, gitops writes with conflict retry, PR comments, webhook verification. Not yet: teardown on PR close, cleanup sweeper.
 
 ## Usage
 
@@ -54,7 +54,7 @@ Local setup: [DEVELOPMENT.md](DEVELOPMENT.md).
 | [`charts/preview-env`](charts/preview-env) | One preview: AppProject, Namespace, one ArgoCD Application per service |
 | [`charts/app`](charts/app) | Generic service chart used by the demo services |
 
-ArgoCD wiring and install steps: [examples/argocd](examples/argocd/README.md). Any change to a chart must bump its `version` (ct lint enforces it). Charts are published with the release pipeline.
+ArgoCD wiring and install steps: [examples/argocd](examples/argocd/README.md). Charts are published to `oci://ghcr.io/doublurehq/charts`; see [CONTRIBUTING.md](CONTRIBUTING.md#releases) for how versions are set.
 
 ## Docs
 
