@@ -3,7 +3,7 @@ services:
     commitSha: "abc123"
 
 serviceRepos:
-  backend-1: "https://github.com/doublurehq/demo-backend-1.git"
+  backend-1: "https://github.com/acme/backend-1.git"
 
 preview:
   domain: example.com

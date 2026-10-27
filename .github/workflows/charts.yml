@@ -46,7 +46,13 @@ jobs:
 
       - name: Render preview-env with doublure values
         run: |
-          out=$(helm template preview-x charts/preview-env -f examples/argocd/services.yaml -f internal/preview/testdata/values.golden.yaml)
+          out=$(helm template preview-x charts/preview-env -f internal/preview/testdata/values.golden.yaml -f - <<'EOF'
+          serviceRepos:
+            backend-1: https://github.com/acme/backend-1.git
+            backend-2: https://github.com/acme/backend-2.git
+            front: https://github.com/acme/front.git
+          EOF
+          )
           echo "$out" | grep -q 'preview.doublure.dev/pr-url'
 
       - name: Render preview-env with per-preview hosts
