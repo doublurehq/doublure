@@ -141,7 +141,7 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := DeployResponse{PreviewSlug: slug, GitOpsCommitURL: result.CommitURL}
-	summary := preview.BuildSummary(slug, result.Values, result.CommitMessage, result.CommitURL)
+	summary := preview.BuildSummary(slug, result.Values, services.URLs, result.CommitMessage, result.CommitURL)
 	if fanErr := s.gitops.FanOutPRComments(ctx, result.Values, summary); fanErr != nil {
 		logger.WarnContext(ctx, "comment fan-out had failures", slog.String("err", fanErr.Error()))
 		resp.Warnings = splitJoinedErr(fanErr)

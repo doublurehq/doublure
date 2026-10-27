@@ -279,6 +279,40 @@ func previewBody() string {
 	return strings.Replace(validBody(), "feature/add-pricing", "feature/pricing", 1)
 }
 
+func TestDeploy_PreviewURLsInSummary(t *testing.T) {
+	fg := &fakeGitops{servicesYAML: servicesWithPreview, writeResult: previewWriteResult()}
+	rec := postDeploy(t, newTestServer(t, fg), previewBody(), "test-token")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{
+		"- **front** · 🔄 `main` · [front-feature-pricing.127.0.0.1.nip.io/](http://front-feature-pricing.127.0.0.1.nip.io/)\n",
+		" · [backend-1-feature-pricing.127.0.0.1.nip.io/docs](http://backend-1-feature-pricing.127.0.0.1.nip.io/docs)\n",
+		"- **backend-2** · 🔄 `main`\n",
+	} {
+		if !strings.Contains(fg.capturedSummary, want) {
+			t.Errorf("summary missing %q, got:\n%s", want, fg.capturedSummary)
+		}
+	}
+	if strings.Contains(fg.capturedSummary, "backend-2-feature-pricing") {
+		t.Errorf("summary links non-exposed backend-2, got:\n%s", fg.capturedSummary)
+	}
+}
+
+func TestDeploy_PreviewURLsDefaultToHTTPS(t *testing.T) {
+	yml := strings.Replace(servicesWithPreview, "  tls: false\n", "", 1)
+	fg := &fakeGitops{servicesYAML: yml, writeResult: previewWriteResult()}
+	rec := postDeploy(t, newTestServer(t, fg), previewBody(), "test-token")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(fg.capturedSummary, "(https://front-feature-pricing.127.0.0.1.nip.io/)") {
+		t.Errorf("summary missing https front link, got:\n%s", fg.capturedSummary)
+	}
+}
+
 func TestDeploy_MalformedPreviewFails(t *testing.T) {
 	yml := strings.Replace(servicesWithPreview, "path: /docs", "path: docs", 1)
 	fg := &fakeGitops{servicesYAML: yml, writeResult: previewWriteResult()}
