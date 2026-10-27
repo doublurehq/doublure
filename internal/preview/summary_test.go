@@ -172,3 +172,54 @@ func TestBuildSummary_PreviewURLPathEscaping(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildTeardownSummary(t *testing.T) {
+	const (
+		slug      = "feature-add-pricing"
+		commitURL = "https://github.com/acme/gitops/commit/deadbeef"
+	)
+	cases := []struct {
+		name    string
+		removed []string
+		deleted bool
+		message string
+		want    string
+	}{
+		{
+			name:    "one removed service",
+			removed: []string{"backend-1"},
+			message: "chore(preview): remove backend-1 from feature-add-pricing",
+			want: "## 🧹 Preview: `feature-add-pricing`\n\n" +
+				"Removed `backend-1` from this preview (PR closed).\n\n" +
+				"---\n" +
+				"🔗 [chore(preview): remove backend-1 from feature-add-pricing](" + commitURL + ")",
+		},
+		{
+			name:    "two removed services",
+			removed: []string{"api", "worker"},
+			message: "chore(preview): remove api, worker from feature-add-pricing",
+			want: "## 🧹 Preview: `feature-add-pricing`\n\n" +
+				"Removed `api`, `worker` from this preview (PR closed).\n\n" +
+				"---\n" +
+				"🔗 [chore(preview): remove api, worker from feature-add-pricing](" + commitURL + ")",
+		},
+		{
+			name:    "deleted",
+			removed: []string{"backend-1"},
+			deleted: true,
+			message: "chore(preview): delete feature-add-pricing preview",
+			want: "## 🧹 Preview: `feature-add-pricing`\n\n" +
+				"Preview deleted: no open PR remains.\n\n" +
+				"---\n" +
+				"🔗 [chore(preview): delete feature-add-pricing preview](" + commitURL + ")",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := preview.BuildTeardownSummary(slug, tc.removed, tc.deleted, tc.message, commitURL)
+			if got != tc.want {
+				t.Errorf("summary mismatch\n got:\n%s\nwant:\n%s", got, tc.want)
+			}
+		})
+	}
+}

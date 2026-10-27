@@ -23,6 +23,10 @@ import (
 	"github.com/doublurehq/doublure/internal/server"
 )
 
+// shutdownTimeout bounds graceful shutdown: draining in-flight requests and
+// then background teardowns share it, inside the default 30s pod grace period.
+const shutdownTimeout = 25 * time.Second
+
 func main() {
 	root := &cobra.Command{
 		Use:          "doublure",
@@ -86,7 +90,12 @@ func serveCmd() *cobra.Command {
 
 			<-ctx.Done()
 			slog.InfoContext(ctx, "shutting down server") //nolint:sloglint // no scoped logger yet
-			return httpSrv.Shutdown(context.Background())
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer cancel()
+			if shutdownErr := httpSrv.Shutdown(shutdownCtx); shutdownErr != nil {
+				return shutdownErr
+			}
+			return srv.WaitBackground(shutdownCtx)
 		},
 	}
 }

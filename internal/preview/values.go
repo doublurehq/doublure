@@ -1,5 +1,7 @@
 package preview
 
+import "strings"
+
 // BuildPreviewValues constructs a fresh PreviewValues for a slug given the
 // service catalog. The triggering service (serviceName) is pinned to
 // commitSha and carries metadata; every other catalog service renders as a
@@ -44,4 +46,38 @@ func UpdatePreviewValues(existing PreviewValues, serviceName, commitSha string, 
 		Metadata:  BuildServiceMetadata(inputs),
 	})
 	return existing
+}
+
+// UnpinPR returns a copy of vals where every entry deployed by the PR
+// owner/repo#number (matched on its metadata pr-url; owner and repo compare
+// case-insensitively) is reset to a bare main-tracking entry. It also returns
+// the names of the unpinned services in file order, and whether any entry is
+// still pinned to a commit. vals is never mutated.
+func UnpinPR(vals PreviewValues, owner, repo string, number int) (PreviewValues, []string, bool) {
+	services := make([]ServiceEntry, len(vals.Services))
+	copy(services, vals.Services)
+
+	var removed []string
+	pinned := false
+	for i := range services {
+		if belongsToPR(services[i], owner, repo, number) {
+			services[i].CommitSha = ""
+			services[i].Metadata = nil
+			removed = append(removed, services[i].Name)
+			continue
+		}
+		if services[i].CommitSha != "" {
+			pinned = true
+		}
+	}
+	return PreviewValues{Services: services}, removed, pinned
+}
+
+// belongsToPR reports whether entry was deployed by owner/repo#number.
+func belongsToPR(entry ServiceEntry, owner, repo string, number int) bool {
+	if entry.Metadata == nil {
+		return false
+	}
+	o, r, n, ok := ParsePRURL(entry.Metadata.PRURL)
+	return ok && n == number && strings.EqualFold(o, owner) && strings.EqualFold(r, repo)
 }

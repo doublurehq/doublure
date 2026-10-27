@@ -13,6 +13,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
                                        └─ preview-env chart → AppProject + Namespace + one Application per service
                                             └─ service chart (k8s/ in each service repo) at commitSha or main
 
+ pull_request closed ──► doublure serve (async) ── unpins the PR's services, or deletes previews/<slug>/values.yaml ──► ArgoCD prunes
  doublure cleanup (CronJob, planned) ── deletes previews/<slug>/ for stale previews ──► ArgoCD prunes
 ```
 
@@ -121,13 +122,17 @@ POST /v1/deploy
 POST /webhooks/github
   X-Hub-Signature-256 verified (401 on mismatch)
   installation ≠ GITHUB_INSTALLATION_ID (ping exempt) → 403
-  ping, installation, installation_repositories, pull_request → structured log only (today)
+  pull_request closed → async teardown; other events → structured log only
   parse failures / handler panics → logged, 200
 ```
 
 Deploy flow: validate `service` against `services.yaml` → slugify `head_ref` → read or bootstrap `previews/<slug>/values.yaml` → write with SHA optimistic locking + 409 retry → PR comment fan-out (best-effort, failures returned as `warnings`).
 
 Deploys are triggered only by CI calling `/v1/deploy`, never by `pull_request` webhooks: CI knows when the image exists (build once, deploy many).
+
+Teardown flow: a `pull_request` `closed` delivery (merged or not) is answered 200 at once, and the teardown runs in the background (20s budget; shutdown waits for it). doublure slugifies the PR's head branch, reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the closed PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The closed PR's comment is edited (or created) to say what was removed.
+
+Deleting the file drops `previews/<slug>/` from the git directory generator, and the ApplicationSet deletes the preview's Application and its resources. This requires the ApplicationSet controller policy `sync` (the default) or `create-delete`; with `create-only` or `create-update` a deleted preview keeps running. Previews whose branch was renamed after the deploy, and closes missed while doublure was down, are left for the cleanup sweeper.
 
 ## Configuration
 
