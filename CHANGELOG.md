@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/doublurehq/doublure/compare/v0.3.0...v0.4.0) (2026-10-27)
+
+
+### Features
+
+* sweep stale and expired previews ([#23](https://github.com/doublurehq/doublure/issues/23)) ([1fed83d](https://github.com/doublurehq/doublure/commit/1fed83d6b0e76389c9bef8bfd76a47536ff37e7c))
+
 ## [0.3.0](https://github.com/doublurehq/doublure/compare/v0.2.1...v0.3.0) (2026-10-27)
 
 
