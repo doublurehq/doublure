@@ -87,6 +87,81 @@ func TestParseServices_Preview(t *testing.T) {
 	}
 }
 
+func TestParseServices_PreviewAliases(t *testing.T) {
+	want := preview.URLConfig{
+		Domain: "example.com",
+		TLS:    false,
+		Expose: map[string]string{"front": "/", "backend-1": "/docs"},
+	}
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "aliased block",
+			raw: `base: &p
+  domain: example.com
+  tls: false
+  expose:
+    front: {}
+    backend-1:
+      path: /docs
+preview: *p
+`,
+		},
+		{
+			name: "aliased domain",
+			raw: `domains:
+  - &d example.com
+preview:
+  domain: *d
+  tls: false
+  expose:
+    front: {}
+    backend-1:
+      path: /docs
+`,
+		},
+		{
+			name: "aliased expose",
+			raw: `exposed: &e
+  front: {}
+  backend-1:
+    path: /docs
+preview:
+  domain: example.com
+  tls: false
+  expose: *e
+`,
+		},
+		{
+			name: "merge key",
+			raw: `base: &p
+  domain: other.example.com
+  tls: false
+  expose:
+    front: {}
+    backend-1:
+      path: /docs
+preview:
+  <<: *p
+  domain: example.com
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := gitops.ParseServices([]byte(serviceRepos + tt.raw))
+			if err != nil {
+				t.Fatalf("ParseServices: %v", err)
+			}
+			if !reflect.DeepEqual(got.URLs, want) {
+				t.Errorf("URLs = %+v, want %+v", got.URLs, want)
+			}
+		})
+	}
+}
+
 func TestParseServices_MalformedPreview(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -121,6 +196,8 @@ func TestParseServices_MalformedPreview(t *testing.T) {
 			"preview.expose.front.path",
 		},
 		{"expose without domain", "preview:\n  expose:\n    front: {}\n", "preview.expose"},
+		{"merge of a scalar", "preview:\n  <<: 1\n  domain: example.com\n", "preview.<<"},
+		{"aliased domain not a string", "n: &n 42\npreview:\n  domain: *n\n", "preview.domain"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

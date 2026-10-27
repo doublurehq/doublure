@@ -30,6 +30,8 @@ var domainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9
 const (
 	tagBool = "!!bool"
 	tagStr  = "!!str"
+	// tagMerge is the tag yaml.v3 gives a `<<` merge key.
+	tagMerge = "!!merge"
 	// pairStride is the step between keys in a mapping node's Content, which
 	// alternates key and value nodes.
 	pairStride = 2
@@ -58,6 +60,14 @@ func ParseServices(raw []byte) (*ServiceCatalog, error) {
 	return &ServiceCatalog{Services: services, URLs: urls}, nil
 }
 
+// resolve follows alias nodes to the node they point at.
+func resolve(n *yaml.Node) *yaml.Node {
+	for n != nil && n.Kind == yaml.AliasNode {
+		n = n.Alias
+	}
+	return n
+}
+
 // isAbsent reports whether n is a missing key or an explicit YAML null.
 func isAbsent(n *yaml.Node) bool {
 	return n == nil || n.Kind == 0 || (n.Kind == yaml.ScalarNode && n.Tag == "!!null")
@@ -67,28 +77,62 @@ func malformed(key, format string, args ...any) error {
 	return fmt.Errorf("%w: %s: %s", errMalformedPreview, key, fmt.Sprintf(format, args...))
 }
 
-// mappingValues returns the key → value nodes of a mapping node.
-func mappingValues(n *yaml.Node) ([]string, map[string]*yaml.Node) {
+// mappingValues returns the keys, in order, and the key → value nodes of the
+// mapping node n, named path in errors. Aliases are resolved and merge keys
+// (`<<`) are expanded as YAML does: explicit keys win over merged ones, and an
+// earlier merged map wins over a later one.
+func mappingValues(path string, n *yaml.Node) ([]string, map[string]*yaml.Node, error) {
 	keys := make([]string, 0, len(n.Content)/pairStride)
 	vals := make(map[string]*yaml.Node, len(n.Content)/pairStride)
+	var merges []*yaml.Node
 	for i := 0; i+1 < len(n.Content); i += pairStride {
-		k := n.Content[i].Value
-		keys = append(keys, k)
-		vals[k] = n.Content[i+1]
+		k, v := resolve(n.Content[i]), resolve(n.Content[i+1])
+		if k.Kind == yaml.ScalarNode && k.Tag == tagMerge {
+			merges = append(merges, v)
+			continue
+		}
+		keys = append(keys, k.Value)
+		vals[k.Value] = v
 	}
-	return keys, vals
+	for _, m := range merges {
+		sources := []*yaml.Node{m}
+		if m.Kind == yaml.SequenceNode {
+			sources = m.Content
+		}
+		for _, src := range sources {
+			src = resolve(src)
+			if src.Kind != yaml.MappingNode {
+				return nil, nil, malformed(path+".<<", "must be a map or a list of maps")
+			}
+			srcKeys, srcVals, err := mappingValues(path, src)
+			if err != nil {
+				return nil, nil, err
+			}
+			for _, k := range srcKeys {
+				if _, set := vals[k]; !set {
+					keys = append(keys, k)
+					vals[k] = srcVals[k]
+				}
+			}
+		}
+	}
+	return keys, vals, nil
 }
 
 // parsePreview validates the `preview` block. An absent block or an absent
 // domain yields the zero URLConfig (feature off).
 func parsePreview(n *yaml.Node) (preview.URLConfig, error) {
+	n = resolve(n)
 	if isAbsent(n) {
 		return preview.URLConfig{}, nil
 	}
 	if n.Kind != yaml.MappingNode {
 		return preview.URLConfig{}, malformed("preview", "must be a map")
 	}
-	_, fields := mappingValues(n)
+	_, fields, err := mappingValues("preview", n)
+	if err != nil {
+		return preview.URLConfig{}, err
+	}
 
 	domain, err := parseDomain(fields["domain"])
 	if err != nil {
@@ -148,7 +192,10 @@ func parseExpose(n *yaml.Node) (map[string]string, error) {
 	if n.Kind != yaml.MappingNode {
 		return nil, malformed("preview.expose", "must be a map")
 	}
-	names, entries := mappingValues(n)
+	names, entries, err := mappingValues("preview.expose", n)
+	if err != nil {
+		return nil, err
+	}
 	expose := make(map[string]string, len(names))
 	for _, name := range names {
 		path, err := parseExposeEntry(name, entries[name])
@@ -168,7 +215,10 @@ func parseExposeEntry(name string, n *yaml.Node) (string, error) {
 	if n.Kind != yaml.MappingNode {
 		return "", malformed(key, "must be empty or a map")
 	}
-	_, fields := mappingValues(n)
+	_, fields, err := mappingValues(key, n)
+	if err != nil {
+		return "", err
+	}
 	p := fields["path"]
 	if isAbsent(p) {
 		return "/", nil
