@@ -34,9 +34,11 @@ type SweepAPI interface {
 //  3. otherwise every distinct PR pinning an entry is looked up, and each
 //     closed one goes through TeardownPR.
 //
-// A ttl of 0 disables rule 2. A failing preview is logged and counted, and the
-// sweep goes on; Sweep then returns an error carrying the count. A ListPreviews
-// error is returned at once.
+// A ttl of 0 disables rule 2. A failing preview read or rule 1-2 delete is
+// logged and counted, and the sweep goes on; Sweep then returns an error
+// carrying the count. A closed-PR teardown failure is only logged by
+// TeardownPR, not counted, and retried on the next run. A ListPreviews error is
+// returned at once.
 func Sweep(ctx context.Context, api SweepAPI, now time.Time, ttl time.Duration) error {
 	slugs, err := api.ListPreviews(ctx)
 	if err != nil {
