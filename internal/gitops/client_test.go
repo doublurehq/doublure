@@ -396,6 +396,8 @@ func TestFanOutPRComments_UpdateAndCreate(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pulls/"):
+			_, _ = io.WriteString(w, `{"state":"open"}`)
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/issues/42/comments"):
 			_, _ = io.WriteString(w, `[{"id": 999, "body": "<!-- doublure:preview -->\n old body"}]`)
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/issues/7/comments"):

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/doublurehq/doublure/internal/gitops"
@@ -217,5 +219,84 @@ func TestDeletePreviewWithRetry_ConflictsExhausted(t *testing.T) {
 	}
 	if got := len(g.requests()); got != gitops.MaxWriteRetries {
 		t.Errorf("deletes = %d, want %d", got, gitops.MaxWriteRetries)
+	}
+}
+
+// fanOutGitHub answers PR state reads from states, keyed by "<repo>/pulls/<n>"
+// (a missing key answers 500), lists no existing comment and records every
+// comment write.
+type fanOutGitHub struct {
+	t      *testing.T
+	states map[string]string
+	mu     sync.Mutex
+	writes []string
+}
+
+func (g *fanOutGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/repos/acme/")
+	switch {
+	case r.Method == http.MethodGet && strings.Contains(path, "/pulls/"):
+		state, ok := g.states[path]
+		if !ok {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"message":"boom"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"state":"`+state+`"}`)
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/comments"):
+		_, _ = io.WriteString(w, `[]`)
+	case r.Method == http.MethodPost && strings.HasSuffix(path, "/comments"):
+		g.mu.Lock()
+		g.writes = append(g.writes, path)
+		g.mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"id":1}`)
+	default:
+		g.t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}
+}
+
+func pinnedBy(name, prURL string) preview.ServiceEntry {
+	return preview.ServiceEntry{Name: name, CommitSha: "abc", Metadata: &preview.Metadata{PRURL: prURL}}
+}
+
+func TestFanOutPRComments_SkipsClosedPRs(t *testing.T) {
+	g := &fanOutGitHub{t: t, states: map[string]string{
+		"backend-1/pulls/42": "open",
+		"backend-2/pulls/7":  "closed",
+	}}
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	vals := preview.PreviewValues{Services: []preview.ServiceEntry{
+		pinnedBy("backend-1", "https://github.com/acme/backend-1/pull/42"),
+		pinnedBy("backend-2", "https://github.com/acme/backend-2/pull/7"),
+	}}
+	if err := newClient(t, srv).FanOutPRComments(context.Background(), vals, "## body"); err != nil {
+		t.Fatalf("FanOutPRComments: %v", err)
+	}
+	if want := []string{"backend-1/issues/42/comments"}; !slices.Equal(g.writes, want) {
+		t.Errorf("comment writes = %v, want %v", g.writes, want)
+	}
+}
+
+func TestFanOutPRComments_StateError(t *testing.T) {
+	g := &fanOutGitHub{t: t, states: map[string]string{
+		"backend-1/pulls/42": "open",
+		// front/pulls/9 answers 500
+	}}
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	vals := preview.PreviewValues{Services: []preview.ServiceEntry{
+		pinnedBy("backend-1", "https://github.com/acme/backend-1/pull/42"),
+		pinnedBy("front", "https://github.com/acme/front/pull/9"),
+	}}
+	err := newClient(t, srv).FanOutPRComments(context.Background(), vals, "## body")
+	if err == nil || !strings.Contains(err.Error(), "service front (acme/front#9): pr state: ") {
+		t.Fatalf("err = %v, want a pr state error for front", err)
+	}
+	if want := []string{"backend-1/issues/42/comments"}; !slices.Equal(g.writes, want) {
+		t.Errorf("comment writes = %v, want %v", g.writes, want)
 	}
 }

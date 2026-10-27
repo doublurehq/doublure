@@ -382,8 +382,10 @@ func (c *Client) DeletePreviewWithRetry(
 }
 
 // FanOutPRComments posts (or updates) the same markdown body as a comment on
-// every PR referenced in vals.Services.Metadata.pr-url. Failures on individual
-// services are collected but do not abort the loop — best-effort delivery.
+// every open PR referenced in vals.Services.Metadata.pr-url. Closed PRs are
+// skipped, so a stale summary never overwrites their teardown comment.
+// Failures on individual services (including a PR state lookup) are collected
+// but do not abort the loop — best-effort delivery.
 //
 // Find-or-create semantics: the comment body is prefixed with PRCommentMarker
 // (HTML comment), so subsequent runs find and update the existing comment
@@ -398,6 +400,14 @@ func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValue
 		owner, repo, prNumber, ok := preview.ParsePRURL(prURL)
 		if !ok {
 			errs = append(errs, fmt.Errorf("service %s: unrecognized pr-url %q", svc.Name, prURL))
+			continue
+		}
+		prOpen, stateErr := c.PullRequestOpen(ctx, owner, repo, prNumber)
+		if stateErr != nil {
+			errs = append(errs, fmt.Errorf("service %s (%s/%s#%d): pr state: %w", svc.Name, owner, repo, prNumber, stateErr))
+			continue
+		}
+		if !prOpen {
 			continue
 		}
 		if upsertErr := c.UpsertPRComment(ctx, owner, repo, prNumber, body); upsertErr != nil {
