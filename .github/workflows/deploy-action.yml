@@ -56,6 +56,8 @@ jobs:
           from http.server import BaseHTTPRequestHandler, HTTPServer
 
           out = sys.argv[1]
+          # /flaky alternates: 502 on the first hit, 200 on the next.
+          flaky = {"fail": False}
 
           class Handler(BaseHTTPRequestHandler):
               def do_POST(self):
@@ -73,6 +75,13 @@ jobs:
                       code, resp = 404, {"error": 'service "acme" not in catalog'}
                   elif self.path == "/empty/v1/deploy":
                       code, resp = 200, {}
+                  elif self.path == "/flaky/v1/deploy":
+                      flaky["fail"] = not flaky["fail"]
+                      if flaky["fail"]:
+                          code, resp = 502, "<html>\n<body>502 Bad Gateway</body>\n</html>"
+                      else:
+                          code, resp = 200, {"preview_slug": "acme-slug",
+                                             "gitops_commit_url": "https://example.com/acme/commit/1"}
                   elif self.path == "/html/v1/deploy":
                       code, resp = 200, "<html>\n<body>ok</body>\n</html>"
                   else:
@@ -184,3 +193,20 @@ jobs:
               || fail "$path: missing unexpected response error"
             [ ! -s "$STUB_DIR/run/output" ] || fail "$path: outputs were written"
           done
+
+      - name: "Case 5: deploy through a retried 502"
+        id: flaky
+        uses: ./actions/deploy
+        with:
+          url: http://127.0.0.1:8099/flaky
+          token: acme-token
+          service: acme
+
+      - name: "Case 5: assert outputs"
+        env:
+          SLUG: ${{ steps.flaky.outputs.preview-slug }}
+          COMMIT_URL: ${{ steps.flaky.outputs.gitops-commit-url }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          [ "$SLUG" = acme-slug ] || fail "unexpected preview-slug output: $SLUG"
+          [ "$COMMIT_URL" = https://example.com/acme/commit/1 ] || fail "unexpected gitops-commit-url output: $COMMIT_URL"
