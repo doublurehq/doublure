@@ -32,6 +32,31 @@ func TestBuildSummary_PinnedAndMainTracking(t *testing.T) {
 	}
 }
 
+// TestBuildSummary_ExactOutput pins the full rendered summary byte for byte.
+func TestBuildSummary_ExactOutput(t *testing.T) {
+	catalog := []string{"backend-1", "backend-2", "front"}
+	in := sampleInputs()
+	vals := preview.BuildPreviewValues(in.ServiceName, in.CommitSha, catalog, in)
+
+	got := preview.BuildSummary(
+		"feature-add-pricing", vals,
+		"chore(preview): create feature-add-pricing preview",
+		"https://github.com/acme/gitops/commit/deadbeef",
+	)
+
+	want := "## 🚀 Preview: `feature-add-pricing`\n" +
+		"\n" +
+		"- **backend-1** · 📌 [`abc12345`](https://github.com/acme/backend-1/commit/abc1234567890) · [PR #42](https://github.com/acme/backend-1/pull/42)\n" +
+		"- **backend-2** · 🔄 `main`\n" +
+		"- **front** · 🔄 `main`\n" +
+		"\n" +
+		"---\n" +
+		"🔗 [chore(preview): create feature-add-pricing preview](https://github.com/acme/gitops/commit/deadbeef)"
+	if got != want {
+		t.Errorf("summary mismatch\n got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestBuildSummary_ShortShaForUnusualLengths(t *testing.T) {
 	catalog := []string{"backend-1"}
 	in := sampleInputs()
