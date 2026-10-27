@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var prURLOwnerRepo = regexp.MustCompile(`^(https://github\.com/[^/]+/[^/]+)/pull/`)
@@ -72,4 +73,11 @@ func BuildTeardownSummary(slug string, removed []string, deleted bool, commitMes
 		sentence = fmt.Sprintf("Removed %s from this preview (PR closed).", strings.Join(names, ", "))
 	}
 	return fmt.Sprintf("## 🧹 Preview: `%s`\n\n%s\n\n---\n🔗 [%s](%s)", slug, sentence, commitMessage, commitURL)
+}
+
+// BuildExpirySummary renders the comment doublure leaves on a preview's open
+// PRs once the cleanup sweeper deleted it for having no deploy within ttl.
+func BuildExpirySummary(slug string, ttl time.Duration, commitMessage, commitURL string) string {
+	return fmt.Sprintf("## 🧹 Preview: `%s`\n\nPreview deleted: no deploy for %s.\n\n---\n🔗 [%s](%s)",
+		slug, ttl, commitMessage, commitURL)
 }

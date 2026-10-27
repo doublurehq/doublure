@@ -3,6 +3,7 @@ package preview_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/doublurehq/doublure/internal/preview"
 )
@@ -221,5 +222,20 @@ func TestBuildTeardownSummary(t *testing.T) {
 				t.Errorf("summary mismatch\n got:\n%s\nwant:\n%s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildExpirySummary(t *testing.T) {
+	got := preview.BuildExpirySummary(
+		"feature-add-pricing", 168*time.Hour,
+		"chore(preview): expire feature-add-pricing preview",
+		"https://github.com/acme/gitops/commit/deadbeef",
+	)
+	want := "## 🧹 Preview: `feature-add-pricing`\n\n" +
+		"Preview deleted: no deploy for 168h0m0s.\n\n" +
+		"---\n" +
+		"🔗 [chore(preview): expire feature-add-pricing preview](https://github.com/acme/gitops/commit/deadbeef)"
+	if got != want {
+		t.Errorf("summary mismatch\n got:\n%s\nwant:\n%s", got, want)
 	}
 }
