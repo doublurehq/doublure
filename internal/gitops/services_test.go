@@ -168,8 +168,8 @@ func TestParseServices_MalformedPreview(t *testing.T) {
 		preview string
 		key     string
 	}{
-		{"preview not a map", "preview: [a]\n", "preview:"},
-		{"preview scalar", "preview: on\n", "preview:"},
+		{"preview not a map", "preview: [a]\n", "line 5: cannot unmarshal !!seq into gitops.previewBlock"},
+		{"preview scalar", "preview: on\n", "line 5: cannot unmarshal !!str `on` into gitops.previewBlock"},
 		{"domain not a string", "preview:\n  domain: [a]\n", "preview.domain"},
 		{"domain number", "preview:\n  domain: 42\n", "preview.domain"},
 		{"domain with scheme", "preview:\n  domain: https://example.com\n", "preview.domain"},
@@ -179,11 +179,15 @@ func TestParseServices_MalformedPreview(t *testing.T) {
 		{"domain uppercase", "preview:\n  domain: Example.com\n", "preview.domain"},
 		{"domain empty", "preview:\n  domain: \"\"\n", "preview.domain"},
 		{"tls not a boolean", "preview:\n  domain: example.com\n  tls: \"false\"\n", "preview.tls"},
-		{"expose not a map", "preview:\n  domain: example.com\n  expose: [front]\n", "preview.expose"},
+		{
+			"expose not a map",
+			"preview:\n  domain: example.com\n  expose: [front]\n",
+			"line 7: cannot unmarshal !!seq into map[string]*gitops.exposeEntry",
+		},
 		{
 			"expose entry not null or map",
 			"preview:\n  domain: example.com\n  expose:\n    front: yes\n",
-			"preview.expose.front",
+			"line 8: cannot unmarshal !!str `yes` into gitops.exposeEntry",
 		},
 		{
 			"path not a string",
@@ -196,38 +200,42 @@ func TestParseServices_MalformedPreview(t *testing.T) {
 			"preview.expose.front.path",
 		},
 		{"expose without domain", "preview:\n  expose:\n    front: {}\n", "preview.expose"},
-		{"unknown preview key", "preview:\n  domian: example.com\n", "preview.domian: unknown key"},
+		{"unknown preview key", "preview:\n  domian: example.com\n", "line 6: field domian not found"},
 		{
 			"unknown preview key next to valid ones",
 			"preview:\n  domain: example.com\n  expsoe:\n    front: {}\n",
-			"preview.expsoe: unknown key",
+			"line 7: field expsoe not found",
 		},
 		{
 			"unknown expose entry key",
 			"preview:\n  domain: example.com\n  expose:\n    front:\n      paht: /docs\n",
-			"preview.expose.front.paht: unknown key",
+			"line 9: field paht not found",
 		},
 		{
 			"unknown key from a merge",
 			"base: &p\n  domian: example.com\npreview:\n  <<: *p\n",
-			"preview.domian: unknown key",
+			"line 6: field domian not found",
 		},
 		{
 			"duplicate preview key",
 			"preview:\n  domain: example.com\n  domain: example.org\n",
-			"preview.domain: duplicate key",
+			`line 7: mapping key "domain" already defined at line 6`,
 		},
 		{
 			"duplicate expose entry",
 			"preview:\n  domain: example.com\n  expose:\n    front: {}\n    front: {}\n",
-			"preview.expose.front: duplicate key",
+			`line 9: mapping key "front" already defined at line 8`,
 		},
 		{
 			"duplicate path key",
 			"preview:\n  domain: example.com\n  expose:\n    front:\n      path: /a\n      path: /b\n",
-			"preview.expose.front.path: duplicate key",
+			`line 10: mapping key "path" already defined at line 9`,
 		},
-		{"merge of a scalar", "preview:\n  <<: 1\n  domain: example.com\n", "preview.<<"},
+		{
+			"merge of a scalar",
+			"preview:\n  <<: 1\n  domain: example.com\n",
+			"map merge requires map or sequence of maps",
+		},
 		{"aliased domain not a string", "n: &n 42\npreview:\n  domain: *n\n", "preview.domain"},
 	}
 	for _, tt := range tests {
