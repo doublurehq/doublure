@@ -121,7 +121,7 @@ func verifyAppCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("GITHUB_APP_ID must be numeric: %w", err)
 			}
-			pem, err := readPrivateKey()
+			pem, err := config.LoadPrivateKey()
 			if err != nil {
 				return err
 			}
@@ -158,21 +158,4 @@ func verifyAppCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// readPrivateKey reads the PEM from GITHUB_PRIVATE_KEY_PATH or, falling back,
-// from inline GITHUB_PRIVATE_KEY. Mirrors the resolution used by config.Load
-// so `doublure verify-app` and `doublure serve` accept the same environment.
-func readPrivateKey() ([]byte, error) {
-	if path := os.Getenv("GITHUB_PRIVATE_KEY_PATH"); path != "" {
-		data, err := os.ReadFile(path) //nolint:gosec // path from trusted env var
-		if err != nil {
-			return nil, fmt.Errorf("reading private key file: %w", err)
-		}
-		return data, nil
-	}
-	if raw := os.Getenv("GITHUB_PRIVATE_KEY"); raw != "" {
-		return []byte(raw), nil
-	}
-	return nil, errors.New("GITHUB_PRIVATE_KEY or GITHUB_PRIVATE_KEY_PATH is required")
 }

@@ -25,7 +25,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	privateKey, err := loadPrivateKey()
+	privateKey, err := LoadPrivateKey()
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,9 @@ func requireEnvInt64(key string) (int64, error) {
 	return v, nil
 }
 
-func loadPrivateKey() ([]byte, error) {
+// LoadPrivateKey reads the GitHub App PEM from GITHUB_PRIVATE_KEY_PATH or,
+// falling back, from inline GITHUB_PRIVATE_KEY.
+func LoadPrivateKey() ([]byte, error) {
 	if path := os.Getenv("GITHUB_PRIVATE_KEY_PATH"); path != "" {
 		data, err := os.ReadFile(path) //nolint:gosec // path from trusted env var
 		if err != nil {
