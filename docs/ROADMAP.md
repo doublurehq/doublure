@@ -23,7 +23,7 @@ v1 = anyone can install doublure on their own cluster and get the full loop desc
 | 5 | **Per-preview data isolation**: database named per preview (not per service), created on deploy, dropped on teardown | data isolation | — |
 | 6 | **Teardown on PR close**: `pull_request` closed → remove service from preview; delete `previews/<slug>/` when no open PR remains | lifecycle | — |
 | 7 | **Cleanup sweeper**: `doublure cleanup` (port akpe-cleanup runner, stale resolver, gitops plugin) + TTL | zombie cost | 5 |
-| 9 | **CI integration**: reusable GitHub Action calling `/v1/deploy`; switch backend-1/2/front off akpe-workflows | build once, deploy many | — |
+| 9 | **CI integration**: reusable GitHub Action calling `/v1/deploy` | build once, deploy many | — |
 | 10 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | 6, 7 |
 | 11 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 9 |
 | 12 | **E2E demo**: agent-opened PR → preview → tests against preview URL → merge → teardown  | validate AI output | all |
