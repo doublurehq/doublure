@@ -1,6 +1,7 @@
 package preview_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/doublurehq/doublure/internal/preview"
@@ -121,5 +122,139 @@ func TestUpdatePreviewValues_FreshTimestampsWhenNoExistingMetadata(t *testing.T)
 	if svc.Metadata.CreatedAt != in2.Timestamp {
 		t.Errorf("created-at = %q, want fresh %q",
 			svc.Metadata.CreatedAt, in2.Timestamp)
+	}
+}
+
+// pinned returns an entry pinned to sha by the PR at prURL.
+func pinned(name, sha, prURL string) preview.ServiceEntry {
+	return preview.ServiceEntry{Name: name, CommitSha: sha, Metadata: &preview.Metadata{PRURL: prURL}}
+}
+
+func TestUnpinPR(t *testing.T) {
+	const (
+		pr42 = "https://github.com/acme/backend-1/pull/42"
+		pr7  = "https://github.com/acme/backend-2/pull/7"
+	)
+	cases := []struct {
+		name        string
+		services    []preview.ServiceEntry
+		owner, repo string
+		number      int
+		wantRemoved []string
+		wantPinned  bool
+	}{
+		{
+			name:       "same number in another repo",
+			services:   []preview.ServiceEntry{pinned("backend-1", "a", pr42), {Name: "front"}},
+			owner:      "acme",
+			repo:       "backend-2",
+			number:     42,
+			wantPinned: true,
+		},
+		{
+			name:       "another number in the same repo",
+			services:   []preview.ServiceEntry{pinned("backend-1", "a", pr42), {Name: "front"}},
+			owner:      "acme",
+			repo:       "backend-1",
+			number:     43,
+			wantPinned: true,
+		},
+		{
+			name:        "owner and repo differ only by case",
+			services:    []preview.ServiceEntry{pinned("backend-1", "a", pr42), {Name: "front"}},
+			owner:       "ACME",
+			repo:        "Backend-1",
+			number:      42,
+			wantRemoved: []string{"backend-1"},
+		},
+		{
+			name: "no metadata",
+			services: []preview.ServiceEntry{
+				{Name: "backend-1", CommitSha: "a"},
+				{Name: "front"},
+			},
+			owner:      "acme",
+			repo:       "backend-1",
+			number:     42,
+			wantPinned: true,
+		},
+		{
+			name:       "unparsable pr-url",
+			services:   []preview.ServiceEntry{pinned("backend-1", "a", "not-a-url/pull/42")},
+			owner:      "acme",
+			repo:       "backend-1",
+			number:     42,
+			wantPinned: true,
+		},
+		{
+			name: "one PR pinning two services",
+			services: []preview.ServiceEntry{
+				pinned("api", "a", pr42),
+				{Name: "front"},
+				pinned("worker", "a", pr42),
+			},
+			owner:       "acme",
+			repo:        "backend-1",
+			number:      42,
+			wantRemoved: []string{"api", "worker"},
+		},
+		{
+			name: "two PRs, one closes",
+			services: []preview.ServiceEntry{
+				pinned("backend-1", "a", pr42),
+				pinned("backend-2", "b", pr7),
+				{Name: "front"},
+			},
+			owner:       "acme",
+			repo:        "backend-1",
+			number:      42,
+			wantRemoved: []string{"backend-1"},
+			wantPinned:  true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := preview.PreviewValues{Services: tc.services}
+			got, removed, stillPinned := preview.UnpinPR(in, tc.owner, tc.repo, tc.number)
+			if !slices.Equal(removed, tc.wantRemoved) {
+				t.Errorf("removed = %v, want %v", removed, tc.wantRemoved)
+			}
+			if stillPinned != tc.wantPinned {
+				t.Errorf("pinned = %v, want %v", stillPinned, tc.wantPinned)
+			}
+			assertUnpinned(t, got, tc.services, tc.wantRemoved)
+		})
+	}
+}
+
+// assertUnpinned checks that got keeps every entry of orig in order and that
+// the removed services are bare main-tracking entries.
+func assertUnpinned(t *testing.T, got preview.PreviewValues, orig []preview.ServiceEntry, removed []string) {
+	t.Helper()
+	if len(got.Services) != len(orig) {
+		t.Fatalf("len(Services) = %d, want %d (entries are kept)", len(got.Services), len(orig))
+	}
+	for i, svc := range got.Services {
+		if svc.Name != orig[i].Name {
+			t.Errorf("Services[%d].Name = %q, want %q", i, svc.Name, orig[i].Name)
+		}
+		if slices.Contains(removed, svc.Name) && (svc.CommitSha != "" || svc.Metadata != nil) {
+			t.Errorf("Services[%d] = %+v, want bare main-tracking entry", i, svc)
+		}
+	}
+}
+
+func TestUnpinPR_DoesNotMutateInput(t *testing.T) {
+	const prURL = "https://github.com/acme/backend-1/pull/42"
+	in := preview.PreviewValues{Services: []preview.ServiceEntry{
+		pinned("backend-1", "abc", prURL),
+		{Name: "front"},
+	}}
+	got, removed, _ := preview.UnpinPR(in, "acme", "backend-1", 42)
+	if len(removed) != 1 || got.Services[0].CommitSha != "" {
+		t.Fatalf("UnpinPR did not unpin: removed = %v, got = %+v", removed, got)
+	}
+	if in.Services[0].CommitSha != "abc" || in.Services[0].Metadata == nil || in.Services[0].Metadata.PRURL != prURL {
+		t.Errorf("input mutated: %+v", in.Services[0])
 	}
 }
