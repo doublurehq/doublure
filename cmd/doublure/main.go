@@ -58,16 +58,12 @@ func serveCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 
-			app, err := github.NewApp(github.AppConfig{
-				AppID:         cfg.AppID,
-				PrivateKey:    cfg.PrivateKey,
-				WebhookSecret: cfg.WebhookSecret,
-			})
+			app, err := newApp(cfg)
 			if err != nil {
-				return fmt.Errorf("creating github app: %w", err)
+				return err
 			}
 
-			gitopsClient, err := newGitopsClient(cfg)
+			gitopsClient, err := newGitopsClient(app, cfg)
 			if err != nil {
 				return err
 			}
@@ -104,11 +100,16 @@ func serveCmd() *cobra.Command {
 
 // newGitopsClient builds the gitops repo client from cfg, authenticated as
 // the GitHub App installation.
-func newGitopsClient(cfg *config.Config) (*gitops.Client, error) {
+func newGitopsClient(app *github.App, cfg *config.Config) (*gitops.Client, error) {
 	owner, repo, ok := strings.Cut(cfg.GitOpsRepo, "/")
 	if !ok || owner == "" || repo == "" {
 		return nil, fmt.Errorf("GITOPS_REPO must be 'owner/repo', got %q", cfg.GitOpsRepo)
 	}
+	return gitops.NewClient(app.ClientForInstallation(cfg.InstallationID), owner, repo), nil
+}
+
+// newApp builds the GitHub App from the loaded config.
+func newApp(cfg *config.Config) (*github.App, error) {
 	app, err := github.NewApp(github.AppConfig{
 		AppID:         cfg.AppID,
 		PrivateKey:    cfg.PrivateKey,
@@ -117,7 +118,7 @@ func newGitopsClient(cfg *config.Config) (*gitops.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating github app: %w", err)
 	}
-	return gitops.NewClient(app.ClientForInstallation(cfg.InstallationID), owner, repo), nil
+	return app, nil
 }
 
 // cleanupCmd runs one sweep over the gitops repo's previews: previews with no
@@ -136,7 +137,11 @@ func cleanupCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := newGitopsClient(cfg)
+			app, err := newApp(cfg)
+			if err != nil {
+				return err
+			}
+			client, err := newGitopsClient(app, cfg)
 			if err != nil {
 				return err
 			}
