@@ -7,8 +7,9 @@ import (
 )
 
 // requireBearer returns middleware that enforces a fixed Bearer token on the
-// Authorization header. The comparison is constant-time so a leaked timing
-// signal cannot reveal the secret prefix-by-prefix.
+// Authorization header, matching the scheme case-insensitively. The token
+// comparison is constant-time so a leaked timing signal cannot reveal the
+// secret prefix-by-prefix.
 //
 // An empty configured token disables the route (all requests get 401) — this
 // is intentional so a misconfigured deployment fails closed instead of open.
@@ -20,14 +21,13 @@ func requireBearer(token string) func(http.Handler) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			header := r.Header.Get("Authorization")
-			const prefix = "Bearer "
-			if !strings.HasPrefix(header, prefix) {
+			// The auth scheme is a case-insensitive token (RFC 9110 §11.1).
+			scheme, got, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+			if !ok || !strings.EqualFold(scheme, "Bearer") {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			got := []byte(header[len(prefix):])
-			if subtle.ConstantTimeCompare(got, want) != 1 {
+			if subtle.ConstantTimeCompare([]byte(got), want) != 1 {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}

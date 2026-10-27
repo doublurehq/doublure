@@ -25,6 +25,9 @@ func TestRequireBearer(t *testing.T) {
 		{"wrong token", "Bearer wrong-token", http.StatusUnauthorized, false},
 		{"empty bearer", "Bearer ", http.StatusUnauthorized, false},
 		{"valid token", "Bearer " + secret, http.StatusNoContent, true},
+		{"lowercase scheme", "bearer " + secret, http.StatusNoContent, true},
+		{"uppercase scheme", "BEARER " + secret, http.StatusNoContent, true},
+		{"scheme only", "Bearer", http.StatusUnauthorized, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
