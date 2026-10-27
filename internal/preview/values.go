@@ -30,10 +30,9 @@ func UpdatePreviewValues(existing PreviewValues, serviceName, commitSha string, 
 		if existing.Services[i].Name != serviceName {
 			continue
 		}
-		preservedCreatedAt := existing.Services[i].Metadata.Get(MetaCreatedAt)
 		md := BuildServiceMetadata(inputs)
-		if preservedCreatedAt != "" {
-			md.Set(MetaCreatedAt, preservedCreatedAt)
+		if old := existing.Services[i].Metadata; old != nil && old.CreatedAt != "" {
+			md.CreatedAt = old.CreatedAt
 		}
 		existing.Services[i].CommitSha = commitSha
 		existing.Services[i].Metadata = md

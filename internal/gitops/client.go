@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	gh "github.com/google/go-github/v71/github"
@@ -107,7 +108,7 @@ func (c *Client) GetPreview(ctx context.Context, slug string) (*preview.PreviewV
 }
 
 // marshalPreview encodes vals with the same indentation rules used for the
-// golden fixture (2-space indent, custom quoting via Metadata.MarshalYAML).
+// golden fixture (2-space indent).
 func marshalPreview(vals preview.PreviewValues) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
@@ -136,16 +137,8 @@ func (c *Client) WritePreview(ctx context.Context, slug string, vals preview.Pre
 	if sha != "" {
 		opts.SHA = gh.Ptr(sha)
 	}
-	var (
-		resp     *gh.Response
-		writeErr error
-		out      *gh.RepositoryContentResponse
-	)
-	if sha == "" {
-		out, resp, writeErr = c.gh.Repositories.CreateFile(ctx, c.owner, c.repo, previewPath(slug), opts)
-	} else {
-		out, resp, writeErr = c.gh.Repositories.UpdateFile(ctx, c.owner, c.repo, previewPath(slug), opts)
-	}
+	// Create and update are the same contents PUT; sha is only set on update.
+	out, resp, writeErr := c.gh.Repositories.UpdateFile(ctx, c.owner, c.repo, previewPath(slug), opts)
 	if writeErr != nil {
 		return "", classifyHTTPError(resp, writeErr)
 	}
@@ -246,19 +239,19 @@ func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValue
 	marked := PRCommentMarker + "\n" + body
 	var errs []error
 	for _, svc := range vals.Services {
-		prURL := svc.Metadata.Get(preview.MetaPRURL)
-		if prURL == "" {
+		if svc.Metadata == nil || svc.Metadata.PRURL == "" {
 			continue
 		}
+		prURL := svc.Metadata.PRURL
 		m := prURLPattern.FindStringSubmatch(prURL)
 		if m == nil {
 			errs = append(errs, fmt.Errorf("service %s: unrecognized pr-url %q", svc.Name, prURL))
 			continue
 		}
 		owner, repo, prNumberStr := m[1], m[2], m[3]
-		var prNumber int
-		if _, scanErr := fmt.Sscanf(prNumberStr, "%d", &prNumber); scanErr != nil {
-			errs = append(errs, fmt.Errorf("service %s: bad pr-number in url: %w", svc.Name, scanErr))
+		prNumber, convErr := strconv.Atoi(prNumberStr)
+		if convErr != nil {
+			errs = append(errs, fmt.Errorf("service %s: bad pr-number in url: %w", svc.Name, convErr))
 			continue
 		}
 		if upsertErr := c.upsertPRComment(ctx, owner, repo, prNumber, marked); upsertErr != nil {

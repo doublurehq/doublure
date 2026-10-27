@@ -28,8 +28,10 @@ func BuildSummary(slug string, values PreviewValues, urls URLConfig, commitMessa
 	fmt.Fprintf(&b, "## 🚀 Preview: `%s`\n\n", slug)
 	for _, svc := range values.Services {
 		sha := svc.CommitSha
-		prURL := svc.Metadata.Get(MetaPRURL)
-		prNumber := svc.Metadata.Get(MetaPRNumber)
+		var prURL, prNumber string
+		if svc.Metadata != nil {
+			prURL, prNumber = svc.Metadata.PRURL, svc.Metadata.PRNumber
+		}
 		if sha != "" {
 			shaShort := sha
 			if len(shaShort) >= 8 {

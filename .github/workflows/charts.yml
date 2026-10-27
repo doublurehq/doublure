@@ -55,6 +55,35 @@ jobs:
           )
           echo "$out" | grep -q 'preview.doublure.dev/pr-url'
 
+      - name: Render preview-env with YAML 1.1 ambiguous metadata
+        run: |
+          out=$(helm template preview-x charts/preview-env -f - <<'EOF'
+          serviceRepos:
+            backend-1: https://github.com/acme/backend-1.git
+          services:
+            - name: backend-1
+              commitSha: abc123
+              metadata:
+                pr-author: "Y"
+                pr-url: https://github.com/acme/backend-1/pull/42
+                pr-number: "0x1F"
+                created-at: "2026-05-26"
+                updated-at: "2026-05-26T10:00:00Z"
+                vcs.ref.name: "on"
+                cicd.pipeline.run.url: https://github.com/acme/backend-1/actions/runs/1
+          EOF
+          )
+          got=$(echo "$out" | yq -N 'select(.kind == "Application") | .metadata.annotations | (.["preview.doublure.dev/pr-author"], .["preview.doublure.dev/pr-number"], .["preview.doublure.dev/created-at"], .["preview.doublure.dev/vcs.ref.name"])')
+          want='Y
+          0x1F
+          2026-05-26
+          on'
+          if [ "$got" != "$want" ]; then
+            echo "::error::metadata annotations do not match the original strings"
+            printf 'got:\n%s\nwant:\n%s\n' "$got" "$want"
+            exit 1
+          fi
+
       - name: Render preview-env with per-preview hosts
         run: |
           out=$(helm template feature-pricing charts/preview-env -f - <<'EOF'

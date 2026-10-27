@@ -42,7 +42,7 @@ func TestBuildPreviewValues(t *testing.T) {
 	if vals.Services[0].Metadata == nil {
 		t.Fatal("Services[0].Metadata is nil; want populated")
 	}
-	if got := vals.Services[0].Metadata.Get(preview.MetaPRAuthor); got != in.PRAuthor {
+	if got := vals.Services[0].Metadata.PRAuthor; got != in.PRAuthor {
 		t.Errorf("metadata pr-author = %q, want %q", got, in.PRAuthor)
 	}
 	for i, svc := range vals.Services[1:] {
@@ -59,7 +59,7 @@ func TestUpdatePreviewValues_PreservesCreatedAt(t *testing.T) {
 	catalog := []string{"backend-1", "backend-2", "front"}
 	in := sampleInputs()
 	existing := preview.BuildPreviewValues(in.ServiceName, in.CommitSha, catalog, in)
-	originalCreatedAt := existing.Services[0].Metadata.Get(preview.MetaCreatedAt)
+	originalCreatedAt := existing.Services[0].Metadata.CreatedAt
 
 	in2 := in
 	in2.CommitSha = "newsha000"
@@ -71,10 +71,10 @@ func TestUpdatePreviewValues_PreservesCreatedAt(t *testing.T) {
 	if svc.CommitSha != in2.CommitSha {
 		t.Errorf("CommitSha = %q, want %q", svc.CommitSha, in2.CommitSha)
 	}
-	if got := svc.Metadata.Get(preview.MetaCreatedAt); got != originalCreatedAt {
+	if got := svc.Metadata.CreatedAt; got != originalCreatedAt {
 		t.Errorf("created-at = %q, want preserved %q", got, originalCreatedAt)
 	}
-	if got := svc.Metadata.Get(preview.MetaUpdatedAt); got != in2.Timestamp {
+	if got := svc.Metadata.UpdatedAt; got != in2.Timestamp {
 		t.Errorf("updated-at = %q, want %q", got, in2.Timestamp)
 	}
 }
@@ -97,9 +97,9 @@ func TestUpdatePreviewValues_AppendsNewService(t *testing.T) {
 	if last.Name != "extra-svc" || last.CommitSha != "xyz0987" {
 		t.Errorf("appended entry = %+v, want extra-svc/xyz0987", last)
 	}
-	if last.Metadata.Get(preview.MetaCreatedAt) != in2.Timestamp {
+	if last.Metadata.CreatedAt != in2.Timestamp {
 		t.Errorf("new entry created-at = %q, want %q",
-			last.Metadata.Get(preview.MetaCreatedAt), in2.Timestamp)
+			last.Metadata.CreatedAt, in2.Timestamp)
 	}
 }
 
@@ -118,8 +118,8 @@ func TestUpdatePreviewValues_FreshTimestampsWhenNoExistingMetadata(t *testing.T)
 
 	updated := preview.UpdatePreviewValues(existing, in2.ServiceName, in2.CommitSha, in2)
 	svc := updated.Services[0]
-	if svc.Metadata.Get(preview.MetaCreatedAt) != in2.Timestamp {
+	if svc.Metadata.CreatedAt != in2.Timestamp {
 		t.Errorf("created-at = %q, want fresh %q",
-			svc.Metadata.Get(preview.MetaCreatedAt), in2.Timestamp)
+			svc.Metadata.CreatedAt, in2.Timestamp)
 	}
 }
