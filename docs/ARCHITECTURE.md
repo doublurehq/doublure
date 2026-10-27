@@ -137,6 +137,8 @@ POST /webhooks/github
   parse failures / handler panics → logged, 200
 ```
 
+CI calls it through the [deploy action](../actions/deploy).
+
 Deploy flow: validate `service` against `services.yaml` → slugify `head_ref` → read or bootstrap `previews/<slug>/values.yaml` → write with SHA optimistic locking + 409 retry → PR comment fan-out (best-effort, failures returned as `warnings`).
 
 Deploys are triggered only by CI calling `/v1/deploy`, never by `pull_request` webhooks: CI knows when the image exists (build once, deploy many).

@@ -8,9 +8,8 @@ Shipped so far: [CHANGELOG.md](../CHANGELOG.md) and [GitHub releases](https://gi
 
 | # | Change | Goal | Depends on |
 |---|---|---|---|
-| 5 | **CI integration**: reusable GitHub Action calling `/v1/deploy` | build once, deploy many | — |
 | 6 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | — |
-| 7 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 5, 9 |
+| 7 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 9 |
 | 8 | **Slug length cap**: truncate and hash long branch slugs so they fit a 63-character namespace name and the `<service>-<slug>` host label | any branch name works | — |
 | 9 | **Bring your own chart**: per-service default branch, chart path, image-tag parameter and ingress-host parameter, instead of `main`, `k8s/`, `app.image.tag` and `app.ingress.host`, so existing company charts work unchanged | fits existing repos | — |
 | 10 | **`bootstrap-app --webhook-url`**: create the App with a given webhook URL, for installs without ngrok | deployable by anyone | — |

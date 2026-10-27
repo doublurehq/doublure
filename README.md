@@ -16,7 +16,7 @@ When code is written at machine speed, the bottleneck is validating and integrat
 
 ## How it works
 
-1. CI in a service repo builds and pushes the image, then calls `POST /v1/deploy`.
+1. CI in a service repo builds and pushes the image, then calls `POST /v1/deploy` through the [deploy action](actions/deploy).
 2. doublure writes `previews/<branch-slug>/values.yaml` to your gitops repo (through your GitHub App) and comments on every PR in that preview.
 3. An ArgoCD ApplicationSet picks up `previews/*` and deploys one namespace per preview, one Application per service.
 4. When a PR closes, doublure unpins its service in `previews/<slug>/values.yaml`, or deletes the file when no PR remains, and ArgoCD prunes the preview.
