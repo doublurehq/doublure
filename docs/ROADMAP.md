@@ -1,32 +1,24 @@
 # Roadmap to v1
 
-v1 = anyone can install doublure on their own cluster and get the full loop described in [PRINCIPLES.md](PRINCIPLES.md). Each item below is scaffolded as its own change before implementation.
+v1 = anyone can install doublure on their own cluster and get the full loop: a preview per branch, deployed by Argo CD, torn down when it is no longer needed.
 
-## Done
-
-| | Change | PR |
-|---|---|---|
-| ✅ | Go scaffold, GitHub App auth | — |
-| ✅ | Deploy logic port (slug, values, gitops write + 409 retry, PR comment fan-out) | doublure #1 |
-| ✅ | `POST /v1/deploy`, bearer auth, `bootstrap-app`, `verify-app` | doublure #2 |
-| ✅ | Webhook signature verification + typed routing (log only) | doublure #3 |
-| ✅ | OSS repo baseline: LICENSE (Apache-2.0), README, CONTRIBUTING, SECURITY; CI on ubuntu-24.04 | doublure #4, #5 |
-| ✅ | Webhook installation allow-list | doublure #7 |
-| ✅ | Charts in doublure (preview-env, app, doublure), ApplicationSet example | doublure #8 |
-| ✅ | Release pipeline: release-please, multi-arch image, OCI charts; demo setup on doublure charts | doublure #9, #10, #11, #12 |
+Shipped so far: [CHANGELOG.md](../CHANGELOG.md) and [GitHub releases](https://github.com/doublurehq/doublure/releases).
 
 ## v1
 
-| # | Change | Principle | Depends on |
+| # | Change | Goal | Depends on |
 |---|---|---|---|
-| 4 | **Per-preview URL**: slug-scoped ingress host passed from preview-env chart to service charts; URL in PR comment | shareable URL | — |
-| 5 | **Per-preview data isolation**: database named per preview (not per service), created on deploy, dropped on teardown | data isolation | — |
-| 6 | **Teardown on PR close**: `pull_request` closed → remove service from preview; delete `previews/<slug>/` when no open PR remains | lifecycle | — |
-| 7 | **Cleanup sweeper**: `doublure cleanup` (port akpe-cleanup runner, stale resolver, gitops plugin) + TTL | zombie cost | 5 |
-| 9 | **CI integration**: reusable GitHub Action calling `/v1/deploy` | build once, deploy many | — |
-| 10 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | 6, 7 |
-| 11 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 9 |
-| 12 | **E2E demo**: agent-opened PR → preview → tests against preview URL → merge → teardown  | validate AI output | all |
+| 1 | **Per-preview URL**: slug-scoped ingress host passed from preview-env chart to service charts; URL in PR comment | shareable URL | — |
+| 2 | **Per-preview data isolation**: database named per preview (not per service), created on deploy, dropped on teardown. Replace the `app` chart's demo-grade Postgres defaults (password = service name, `sslmode=disable`) | data isolation | — |
+| 3 | **Teardown on PR close**: `pull_request` closed → remove service from preview; delete `previews/<slug>/` when no open PR remains | lifecycle | — |
+| 4 | **Cleanup sweeper**: `doublure cleanup` finds stale previews (no open PR) and previews past their TTL, and deletes `previews/<slug>/` | zombie cost | 2 |
+| 5 | **CI integration**: reusable GitHub Action calling `/v1/deploy` | build once, deploy many | — |
+| 6 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | 3, 4 |
+| 7 | **Install guide**: GitHub App, chart install, gitops repo contract, CI step | deployable by anyone | 5 |
+| 8 | **Slug length cap**: truncate and hash long branch slugs so they fit a 63-character namespace name | any branch name works | — |
+| 9 | **Configurable service-repo contract**: default branch, chart path and image-tag parameter, instead of `main`, `k8s/` and `app.image.tag` | fits existing repos | — |
+| 10 | **`bootstrap-app --webhook-url`**: create the App with a given webhook URL, for installs without ngrok | deployable by anyone | — |
+| 11 | **E2E demo**: agent-opened PR → preview → tests against preview URL → merge → teardown | validate AI output | all |
 
 ## Non-goals
 
@@ -36,5 +28,5 @@ Multi-tenancy, hosted control plane, in-cluster agent, billing, SSO, queue/worke
 
 - Auth via CI `GITHUB_TOKEN` instead of a static deploy token
 - Scale-to-zero / off-hours pause for previews
-- Registry check before deploy (`verifyImage`)
+- Check the image exists in the registry before writing gitops
 - Contract tests against preview APIs

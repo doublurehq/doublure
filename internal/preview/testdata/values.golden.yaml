@@ -2,7 +2,7 @@ services:
   - name: backend-1
     commitSha: abc1234567890
     metadata:
-      pr-author: amine
+      pr-author: octocat
       pr-url: https://github.com/acme/backend-1/pull/42
       pr-number: '42'
       created-at: '2026-05-26T10:00:00Z'

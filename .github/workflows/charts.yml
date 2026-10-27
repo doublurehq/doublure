@@ -48,10 +48,6 @@ jobs:
         run: |
           out=$(helm template preview-x charts/preview-env -f examples/argocd/services.yaml -f internal/preview/testdata/values.golden.yaml)
           echo "$out" | grep -q 'preview.doublure.dev/pr-url'
-          if echo "$out" | grep -q 'akpe'; then
-            echo "::error::rendered preview-env still references akpe"
-            exit 1
-          fi
 
       - name: Render doublure with all components
         run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true

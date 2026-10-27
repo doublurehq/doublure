@@ -68,8 +68,7 @@ before doing anything (skip with --yes).`,
 			})
 		},
 	}
-	host, _ := os.Hostname()
-	cmd.Flags().StringVar(&appName, "name", "doublure-dev-"+sanitizeHost(host), "App name (must be globally unique)")
+	cmd.Flags().StringVar(&appName, "name", defaultAppName(), "App name (must be globally unique)")
 	cmd.Flags().StringVar(&gitopsRepo, "gitops-repo", "", "GITOPS_REPO value to write into .env (owner/repo)")
 	cmd.Flags().StringVar(&envPath, "env-file", ".env", "Path to write the .env file")
 	cmd.Flags().StringVar(&pemPath, "pem-file", "dev.private-key.pem", "Path to write the App private key")
@@ -352,17 +351,13 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-// sanitizeHost trims the macOS-style ".local" / ".lan" / ".home" suffix and
-// lowercases so the default --name flag yields something GitHub will accept.
-func sanitizeHost(h string) string {
-	h = strings.ToLower(h)
-	for _, suffix := range []string{".local", ".lan", ".home"} {
-		h = strings.TrimSuffix(h, suffix)
-	}
-	if h == "" {
-		return "host"
-	}
-	return h
+// defaultAppName returns "doublure-dev-" plus 6 random lowercase hex chars.
+// GitHub App names are global, so the suffix avoids collisions without
+// publishing anything about the developer's machine.
+func defaultAppName() string {
+	buf := make([]byte, 3) //nolint:mnd // 3 bytes = 6 hex chars
+	_, _ = rand.Read(buf)  // crypto/rand.Read never returns an error
+	return "doublure-dev-" + hex.EncodeToString(buf)
 }
 
 type envValues struct {

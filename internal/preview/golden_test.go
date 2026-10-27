@@ -27,7 +27,7 @@ func TestGoldenYAML(t *testing.T) {
 		ServiceName:    "backend-1",
 		HeadRef:        "feature/add-pricing",
 		CommitSha:      "abc1234567890",
-		PRAuthor:       "amine",
+		PRAuthor:       "octocat",
 		PRURL:          "https://github.com/acme/backend-1/pull/42",
 		PRNumber:       "42",
 		Timestamp:      "2026-05-26T10:00:00Z",

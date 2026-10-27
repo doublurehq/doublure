@@ -13,7 +13,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
                                        └─ preview-env chart → AppProject + Namespace + one Application per service
                                             └─ service chart (k8s/ in each service repo) at commitSha or main
 
- doublure cleanup (CronJob) ── deletes previews/<slug>/ for stale previews ──► ArgoCD prunes
+ doublure cleanup (CronJob, planned) ── deletes previews/<slug>/ for stale previews ──► ArgoCD prunes
 ```
 
 ## Components
@@ -21,7 +21,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
 | Component | Where | Notes |
 |---|---|---|
 | `doublure serve` | this repo | chi HTTP server: `/healthz`, `/v1/deploy`, `/webhooks/github` |
-| `doublure cleanup` | this repo | One-shot, CronJob. Stub today (see ROADMAP) |
+| `doublure cleanup` | this repo | One-shot, CronJob. Not implemented yet: exits with an error (see [ROADMAP](ROADMAP.md)) |
 | `doublure bootstrap-app` / `verify-app` | this repo | Create a GitHub App via the manifest flow / check credentials |
 | `preview-env` chart | this repo, [`charts/preview-env`](../charts/preview-env) | Renders AppProject, Namespace, one ArgoCD Application per service; Application annotations `preview.doublure.dev/*` carry the PR metadata |
 | ApplicationSet | this repo, [`examples/argocd`](../examples/argocd) | Git directory generator on `previews/*` |
@@ -45,7 +45,40 @@ services:
   - name: front
 ```
 
-Pinned vs main-tracking trade-off: [TARGET_REVISION.md](TARGET_REVISION.md).
+## Pinned and main-tracking services
+
+A preview runs each service in one of two modes, set by `commitSha` in `previews/<slug>/values.yaml`:
+
+- **Pinned** (`commitSha` set): the Application uses `targetRevision: <sha>` and `app.image.tag: <sha>`. It changes only when doublure writes a new SHA.
+- **Main-tracking** (no `commitSha`): the Application uses `targetRevision: main` and `app.image.tag: $ARGOCD_APP_REVISION`, which Argo CD resolves to the commit it syncs. It follows new commits on `main`.
+
+A main-tracking service can briefly sit in `ImagePullBackOff`: when Argo CD syncs a new `main` commit before that commit's CI has pushed the image, the image tag does not exist yet. This is accepted because it resolves without intervention:
+
+- The kubelet keeps retrying the pull, with a back-off capped at 300 seconds, and the pod starts once the image is in the registry.
+- The Applications sync with `selfHeal: true`, and Argo CD polls Git every 3 minutes by default.
+- Only services that are not under review in the preview are affected.
+
+Alternatives considered, and why they were not chosen:
+
+- **doublure re-pins main-tracking services** to the new `main` SHA in every active preview once its image exists: removes the race, but every `main` build has to rewrite every preview, with concurrent writes to the same files.
+- **Argo CD webhook from CI** after the image push, instead of polling: needs CI-to-cluster network access and an exposed Argo CD API, and does not help while Argo CD also polls.
+- **Argo CD Image Updater**: another controller with registry credentials and write-back config, built for tracking the latest tag rather than previews.
+- **Init container that waits for the image**: adds registry access and a wait to every service chart, and still delays startup.
+
+References: [Helm build environment in Argo CD](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/), [Argo CD tracking strategies](https://argo-cd.readthedocs.io/en/latest/user-guide/tracking_strategies/).
+
+## Service repo contract
+
+The `preview-env` chart ([`application.yaml`](../charts/preview-env/templates/application.yaml)) renders one Argo CD Application per service from the service's repo URL in `services.yaml`, and expects each service repo to provide:
+
+- A Helm chart at `k8s/`.
+- A `main` branch: main-tracking services use `targetRevision: main`.
+- A Helm parameter `app.image.tag`: the service chart declares the [`app`](../charts/app) chart as a dependency aliased `app`.
+- Images tagged with the full git commit SHA: pinned services use the `commitSha` sent to `/v1/deploy`, main-tracking services use `$ARGOCD_APP_REVISION`.
+
+These values are fixed in the chart today; making them configurable is on the [roadmap](ROADMAP.md).
+
+The ApplicationSet example sources `preview-env` from an OCI registry (`oci://` with `path: "."`), which requires Argo CD 3.1 or later.
 
 ## HTTP API
 

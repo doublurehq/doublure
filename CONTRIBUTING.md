@@ -10,7 +10,12 @@ make test
 make lint    # golangci-lint
 ```
 
-CI runs gofmt, `go vet`, `go build` and `go test -race` on every push and PR. All must pass before merge.
+Two checks are required before merge, on every PR:
+
+- `test` (`CI` workflow): gofmt, `go vet`, `go build` and `go test -race`.
+- `lint` (`Charts` workflow): `helm lint`, `ct lint` and chart render checks.
+
+CI does not run golangci-lint; run `make lint` locally.
 
 ## Pull requests
 
@@ -23,7 +28,7 @@ CI runs gofmt, `go vet`, `go build` and `go test -race` on every push and PR. Al
 Releases are cut by [release-please](https://github.com/googleapis/release-please) from Conventional Commits.
 
 - On `main` it keeps a `chore(main): release X.Y.Z` PR up to date. Merging it tags `vX.Y.Z`, creates the GitHub Release, and publishes `ghcr.io/doublurehq/doublure:X.Y.Z` (also `X.Y` and `latest`, for linux/amd64 and linux/arm64) and the `doublure` chart.
-- The release PR gets no CI, because it is created by `GITHUB_TOKEN`. Before merging, a maintainer checks that it only touches `CHANGELOG.md`, `.release-please-manifest.json` and `charts/doublure/Chart.yaml`.
+- Checks on the release PR don't start on their own. A maintainer re-runs them from the PR, checks that the diff only touches `CHANGELOG.md`, `.release-please-manifest.json` and `charts/doublure/Chart.yaml`, then merges.
 
 Chart versioning:
 

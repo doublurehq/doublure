@@ -2,6 +2,8 @@
 
 The ArgoCD side of doublure: an AppProject and an ApplicationSet that turn every `previews/<slug>/` directory of your gitops repo into one preview environment, rendered by the `preview-env` chart.
 
+Requires Argo CD 3.1 or later (OCI chart source).
+
 ## Gitops repo contract
 
 - `services.yaml` at the repo root maps each service name to its repo URL (`serviceRepos`). The copy here lists the demo services.
