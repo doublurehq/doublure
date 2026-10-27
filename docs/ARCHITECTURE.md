@@ -31,9 +31,25 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
 ## Gitops repo contract
 
 ```
-services.yaml                    # serviceRepos: { <service>: <git url> }
+services.yaml                    # serviceRepos: { <service>: <git url> }, optional preview block
 previews/<slug>/values.yaml      # written by doublure
 ```
+
+```yaml
+# services.yaml
+serviceRepos:
+  backend-1: https://github.com/acme/backend-1.git
+  front: https://github.com/acme/front.git
+preview:                        # optional: per-preview URLs, off without domain
+  domain: 127.0.0.1.nip.io      # lowercase bare domain: no scheme, no path, no leading or trailing dot
+  tls: false                    # optional, default true: https or http in the PR-comment links only
+  expose:                       # services that get a host and a link
+    front: {}                   # entry value: empty, {} or {path: ...}
+    backend-1:
+      path: /docs               # optional, default "/": PR-comment link only
+```
+
+`services.yaml` is a value file of the `preview-env` chart and is read by doublure on every deploy. A malformed `preview` block fails `/v1/deploy` with an error naming the offending key. An `expose` entry for a service missing from `serviceRepos` is ignored.
 
 ```yaml
 # previews/feature-pricing/values.yaml
@@ -44,6 +60,17 @@ services:
   - name: backend-2             # no commitSha: tracks main
   - name: front
 ```
+
+## Per-preview URLs
+
+Each exposed service of a preview gets the host `<service>-<slug>.<domain>`. One wildcard DNS record (and, for TLS, one wildcard certificate) for `*.<domain>` covers every preview.
+
+- The `preview-env` chart passes it to the service's Application as the Helm parameter `app.ingress.host`.
+- doublure appends ` · [<host><path>](<scheme>://<host><path>)` to the service's line in the PR comment.
+
+`tls` only picks the link scheme; ingress TLS, the ingress class and annotations stay in the service chart. Services not in `expose` (non-HTTP services, for example) get no host and no link.
+
+Known limit: a DNS label is at most 63 characters. Until the slug length cap lands (see [ROADMAP](ROADMAP.md)), a long `<service>-<slug>` label makes that service's ingress invalid.
 
 ## Pinned and main-tracking services
 
@@ -75,6 +102,7 @@ The `preview-env` chart ([`application.yaml`](../charts/preview-env/templates/ap
 - A `main` branch: main-tracking services use `targetRevision: main`.
 - A Helm parameter `app.image.tag`: the service chart declares the [`app`](../charts/app) chart as a dependency aliased `app`.
 - Images tagged with the full git commit SHA: pinned services use the `commitSha` sent to `/v1/deploy`, main-tracking services use `$ARGOCD_APP_REVISION`.
+- For services in `preview.expose`: ingress enabled and a Helm parameter `app.ingress.host` setting the ingress host. Otherwise the PR-comment link is dead.
 
 These values are fixed in the chart today; making them configurable is on the [roadmap](ROADMAP.md).
 

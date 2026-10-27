@@ -16,6 +16,10 @@ Requires Argo CD 3.1 or later (OCI chart source).
 2. `appproject-previews.yaml`: `kubectl apply -f appproject-previews.yaml`
 3. `applicationset-previews.yaml`: `kubectl apply -f applicationset-previews.yaml`
 
+## Preview URLs
+
+To give each preview its own URL, uncomment the `preview` block in `services.yaml` and set `domain`, then create a wildcard DNS record for `*.<domain>` pointing at your ingress controller. Each service listed under `expose` gets the ingress host `<service>-<slug>.<domain>` and a link in the PR comment; its chart must enable ingress and honor `app.ingress.host`. This needs `preview-env` 0.2.0 or later: after changing the chart version (`targetRevision`) in `applicationset-previews.yaml`, re-apply it with `kubectl apply -f applicationset-previews.yaml`, as Argo CD does not manage the ApplicationSet itself.
+
 ## Adapt to your org
 
 - Replace `https://github.com/doublurehq/demo-gitops.git` with your gitops repo URL, in both the AppProject and the ApplicationSet.
