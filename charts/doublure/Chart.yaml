@@ -2,5 +2,5 @@ apiVersion: v2
 name: doublure
 description: doublure preview-environment control plane
 version: 0.1.0
-appVersion: "0.1.0"
+appVersion: 0.1.0
 home: https://github.com/doublurehq/doublure
