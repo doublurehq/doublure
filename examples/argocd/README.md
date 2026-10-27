@@ -20,7 +20,7 @@ The ArgoCD side of doublure: an AppProject and an ApplicationSet that turn every
 - Replace `oci://ghcr.io/doublurehq/charts/preview-env` if you host the chart elsewhere.
 - Replace the `serviceRepos` entries in `services.yaml` with your services.
 
-The charts are published to `oci://ghcr.io/doublurehq/charts/*` from the first release on.
+Charts are published to `oci://ghcr.io/doublurehq/charts/*`.
 
 ## Install doublure
 
@@ -37,11 +37,11 @@ kubectl create secret generic doublure -n doublure \
 Install the chart from [`charts/doublure`](../../charts/doublure):
 
 ```bash
-helm install doublure charts/doublure -n doublure \
+helm install doublure oci://ghcr.io/doublurehq/charts/doublure --version 0.1.0 -n doublure \
   --set-string config.githubAppId=<app-id> \
   --set-string config.githubInstallationId=<installation-id> \
   --set config.gitopsRepo=<owner>/<gitops-repo> \
   --set existingSecret=doublure
 ```
 
-Set `ingress.enabled=true` and `ingress.host` to expose `/webhooks/github` (GitHub App webhook) and `/v1/deploy` (CI). The image tag defaults to the chart `appVersion`; no image is published before the first release.
+Set `ingress.enabled=true` and `ingress.host` to expose `/webhooks/github` (GitHub App webhook) and `/v1/deploy` (CI). The image tag defaults to the chart `appVersion` (`ghcr.io/doublurehq/doublure:<appVersion>`).
