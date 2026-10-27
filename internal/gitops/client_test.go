@@ -77,10 +77,14 @@ func TestFetchServiceCatalog(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(t, srv)
-	catalog, err := c.FetchServiceCatalog(context.Background())
+	got, err := c.FetchServiceCatalog(context.Background())
 	if err != nil {
 		t.Fatalf("FetchServiceCatalog: %v", err)
 	}
+	if got.URLs.Enabled() {
+		t.Errorf("URLs = %+v, want off without a preview block", got.URLs)
+	}
+	catalog := got.Services
 	want := []string{"backend-1", "backend-2", "front"}
 	if len(catalog) != len(want) {
 		t.Fatalf("catalog = %v, want %v", catalog, want)

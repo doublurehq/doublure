@@ -23,7 +23,7 @@ const deployTimeout = 30 * time.Second
 // here so tests can inject fakes without spinning up an httptest server for
 // every GitHub round-trip.
 type gitopsAPI interface {
-	FetchServiceCatalog(ctx context.Context) ([]string, error)
+	FetchServiceCatalog(ctx context.Context) (*gitops.ServiceCatalog, error)
 	WritePreviewWithRetry(
 		ctx context.Context,
 		slug string,
@@ -105,11 +105,12 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		slog.String("pr_number", req.PRNumber),
 	)
 
-	catalog, err := s.gitops.FetchServiceCatalog(ctx)
+	services, err := s.gitops.FetchServiceCatalog(ctx)
 	if err != nil {
 		writeUpstreamError(ctx, logger, w, "fetch catalog", err)
 		return
 	}
+	catalog := services.Services
 	if !slices.Contains(catalog, req.Service) {
 		writeJSONError(ctx, w, http.StatusNotFound,
 			fmt.Sprintf("service %q not in catalog", req.Service))
