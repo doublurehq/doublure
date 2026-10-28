@@ -160,10 +160,7 @@ func TestWritePreview_Create(t *testing.T) {
 			t.Errorf("create request must not include sha; got body: %s", body)
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = io.WriteString(
-			w,
-			`{"content":{"sha":"new-blob"},"commit":{"html_url":"https://github.com/acme/gitops/commit/abc"}}`,
-		)
+		_, _ = io.WriteString(w, `{"content":{"sha":"new-blob"},"commit":{"html_url":"https://github.com/acme/gitops/commit/abc"}}`)
 	}))
 	defer srv.Close()
 
@@ -199,13 +196,7 @@ func TestWritePreview_Update(t *testing.T) {
 
 	c := newClient(t, srv)
 	vals := preview.BuildPreviewValues("backend-1", "newsha", []string{"backend-1"}, sampleInputs())
-	commitURL, err := c.WritePreview(
-		context.Background(),
-		"slug",
-		vals,
-		"old-blob",
-		"chore(preview): update backend-1 in slug",
-	)
+	commitURL, err := c.WritePreview(context.Background(), "slug", vals, "old-blob", "chore(preview): update backend-1 in slug")
 	if err != nil {
 		t.Fatalf("WritePreview: %v", err)
 	}

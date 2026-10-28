@@ -3,7 +3,8 @@ package preview
 import "strings"
 
 // URLConfig is the parsed `preview` block of the gitops repo's services.yaml.
-// The zero value means the feature is off: no hosts and no links.
+// The zero value writes no hosts; links follow the hosts already written in
+// the preview file.
 type URLConfig struct {
 	// Domain is the parent of every preview host. Empty means off.
 	Domain string

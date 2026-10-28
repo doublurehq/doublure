@@ -224,6 +224,16 @@ func statusCode(err error) int {
 	return 0
 }
 
+// WriteResult is the outcome of a successful WritePreviewWithRetry call.
+// CommitMessage is whichever of {createMessage, updateMessage} was actually
+// used for the gitops commit, so callers can label PR summaries consistently
+// with what GitHub shows when the user clicks through to the commit.
+type WriteResult struct {
+	Values        preview.PreviewValues
+	CommitURL     string
+	CommitMessage string
+}
+
 // WritePreviewWithRetry composes Get → (Build|Update)PreviewValues → Write and
 // retries up to MaxWriteRetries times on 409 conflicts (someone else updated
 // the file between our read and write). On every retry the latest file is
@@ -237,16 +247,6 @@ func statusCode(err error) int {
 // After every build or merge, preview.ApplyHosts sets each entry's host from
 // urls, so the written file carries the hosts of the current catalog.
 //
-// WriteResult is the outcome of a successful WritePreviewWithRetry call.
-// CommitMessage is whichever of {createMessage, updateMessage} was actually
-// used for the gitops commit, so callers can label PR summaries consistently
-// with what GitHub shows when the user clicks through to the commit.
-type WriteResult struct {
-	Values        preview.PreviewValues
-	CommitURL     string
-	CommitMessage string
-}
-
 // Returns a WriteResult capturing the final PreviewValues that was written,
 // the gitops commit URL, and the commit message used — callers (e.g. the
 // deploy handler) can render PR summaries without re-fetching.
