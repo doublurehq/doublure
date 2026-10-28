@@ -25,8 +25,11 @@ type Server struct {
 	// deliveries are dispatched.
 	allowedInstallationID int64
 	router                chi.Router
-	// bg tracks background work (PR-close teardowns) for WaitBackground.
+	// bg tracks background jobs (teardowns and reconciles), queued or running,
+	// for WaitBackground.
 	bg sync.WaitGroup
+	// jobs serializes background jobs: at most one runs at a time.
+	jobs sync.Mutex
 }
 
 func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string, allowedInstallationID int64) *Server {
@@ -59,7 +62,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// WaitBackground blocks until every background teardown has finished. It
+// WaitBackground blocks until every background job has finished. It
 // returns nil once they are done, or ctx.Err() when ctx expires first.
 func (s *Server) WaitBackground(ctx context.Context) error {
 	done := make(chan struct{})

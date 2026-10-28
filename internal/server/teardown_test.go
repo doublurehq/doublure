@@ -106,7 +106,7 @@ func TestTeardown_ClosedStartsTeardown(t *testing.T) {
 	}
 }
 
-func TestTeardown_OpenedStartsNothing(t *testing.T) {
+func TestTeardown_OpenedStartsNoTeardown(t *testing.T) {
 	fg := &fakeGitops{}
 	s, _ := newTeardownServer(t, fg)
 	s.handlePullRequest(context.Background(), prEvent("opened", false))
