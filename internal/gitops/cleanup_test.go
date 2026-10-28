@@ -3,9 +3,11 @@ package gitops_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -53,23 +55,60 @@ func TestListPreviews_NotFound(t *testing.T) {
 	}
 }
 
-func TestPullRequestOpen(t *testing.T) {
+func TestGetPullRequest(t *testing.T) {
+	const (
+		head = `"head":{"ref":"feature/pricing","sha":"abc123","repo":{"full_name":"%s"}}`
+		base = `"base":{"repo":{"full_name":"acme/backend-1"}}`
+		rest = `"user":{"login":"octocat"},"html_url":"https://github.com/acme/backend-1/pull/42"`
+	)
+	pr := func(open bool, headFullName string, labels ...string) *gitops.PullRequest {
+		if labels == nil {
+			labels = []string{}
+		}
+		return &gitops.PullRequest{
+			Open:         open,
+			HeadRef:      "feature/pricing",
+			HeadSHA:      "abc123",
+			Author:       "octocat",
+			URL:          "https://github.com/acme/backend-1/pull/42",
+			Labels:       labels,
+			FullName:     "acme/backend-1",
+			HeadFullName: headFullName,
+		}
+	}
 	cases := []struct {
 		name       string
 		status     int
 		body       string
-		want       bool
+		want       *gitops.PullRequest
 		wantErr    error
 		wantAnyErr bool
 	}{
-		{name: "open", status: http.StatusOK, body: `{"state":"open"}`, want: true},
-		{name: "closed", status: http.StatusOK, body: `{"state":"closed"}`, want: false},
+		{
+			name:   "open with labels",
+			status: http.StatusOK,
+			body: `{"state":"open",` + fmt.Sprintf(head, "acme/backend-1") + `,` + base + `,` + rest +
+				`,"labels":[{"name":"preview"},{"name":"bug"}]}`,
+			want: pr(true, "acme/backend-1", "preview", "bug"),
+		},
+		{
+			name:   "closed",
+			status: http.StatusOK,
+			body:   `{"state":"closed",` + fmt.Sprintf(head, "acme/backend-1") + `,` + base + `,` + rest + `}`,
+			want:   pr(false, "acme/backend-1"),
+		},
+		{
+			name:   "fork head",
+			status: http.StatusOK,
+			body:   `{"state":"open",` + fmt.Sprintf(head, "octocat/backend-1") + `,` + base + `,` + rest + `}`,
+			want:   pr(true, "octocat/backend-1"),
+		},
 		{name: "not found", status: http.StatusNotFound, body: `{"message":"Not Found"}`, wantErr: gitops.ErrNotFound},
 		{name: "server error", status: http.StatusInternalServerError, body: `{"message":"boom"}`, wantAnyErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := pullRequestOpen(t, tc.status, tc.body)
+			got, err := getPullRequest(t, tc.status, tc.body)
 			switch {
 			case tc.wantErr != nil:
 				if !errors.Is(err, tc.wantErr) {
@@ -77,20 +116,20 @@ func TestPullRequestOpen(t *testing.T) {
 				}
 			case tc.wantAnyErr:
 				if err == nil {
-					t.Fatalf("PullRequestOpen = %v, nil; want an error", got)
+					t.Fatalf("GetPullRequest = %+v, nil; want an error", got)
 				}
 			case err != nil:
-				t.Fatalf("PullRequestOpen: %v", err)
-			case got != tc.want:
-				t.Errorf("PullRequestOpen = %v, want %v", got, tc.want)
+				t.Fatalf("GetPullRequest: %v", err)
+			case !reflect.DeepEqual(got, tc.want):
+				t.Errorf("GetPullRequest = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
 }
 
-// pullRequestOpen calls PullRequestOpen on acme/backend-1#42 against a server
+// getPullRequest calls GetPullRequest on acme/backend-1#42 against a server
 // answering status and body.
-func pullRequestOpen(t *testing.T, status int, body string) (bool, error) {
+func getPullRequest(t *testing.T, status int, body string) (*gitops.PullRequest, error) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/repos/acme/backend-1/pulls/42" {
@@ -100,7 +139,7 @@ func pullRequestOpen(t *testing.T, status int, body string) (bool, error) {
 		_, _ = io.WriteString(w, body)
 	}))
 	defer srv.Close()
-	return newClient(t, srv).PullRequestOpen(context.Background(), "acme", "backend-1", 42)
+	return newClient(t, srv).GetPullRequest(context.Background(), "acme", "backend-1", 42)
 }
 
 // singlePin reports whether exactly one entry of vals is pinned; it turns

@@ -6,6 +6,7 @@ serviceRepos:
 # Per-preview URLs (optional): each exposed service gets the ingress host
 # <service>-<slug>.<domain> and a link in the PR comment.
 # preview:
+#   label: preview                # optional, default "preview": the PR label that creates the preview
 #   domain: previews.example.com  # lowercase bare domain; needs a wildcard DNS record for *.<domain>
 #   tls: true                     # optional, default true: https links (ingress TLS stays in the service chart)
 #   expose:

@@ -47,6 +47,14 @@ func prEvent(action string, merged bool) *gh.PullRequestEvent {
 	}
 }
 
+// closedPR is acme/backend-1#42 on feature/add-pricing, closed, as read from
+// GitHub.
+func closedPR() *gitops.PullRequest {
+	pr := fetchedPR(false)
+	pr.HeadRef = "feature/add-pricing"
+	return pr
+}
+
 // closeAndWait delivers a closed event and waits for the background teardown.
 func closeAndWait(t *testing.T, s *Server) {
 	t.Helper()
@@ -91,7 +99,7 @@ func assertTeardownAttrs(t *testing.T, attrs map[string]slog.Value) {
 func TestTeardown_ClosedStartsTeardown(t *testing.T) {
 	for _, merged := range []bool{true, false} {
 		t.Run(map[bool]string{true: "merged", false: "not merged"}[merged], func(t *testing.T) {
-			fg := &fakeGitops{}
+			fg := &fakeGitops{pr: closedPR()}
 			s, _ := newTeardownServer(t, fg)
 			s.handlePullRequest(context.Background(), prEvent("closed", merged))
 			if err := s.WaitBackground(context.Background()); err != nil {
@@ -106,7 +114,7 @@ func TestTeardown_ClosedStartsTeardown(t *testing.T) {
 	}
 }
 
-func TestTeardown_OpenedStartsNothing(t *testing.T) {
+func TestTeardown_OpenedStartsNoTeardown(t *testing.T) {
 	fg := &fakeGitops{}
 	s, _ := newTeardownServer(t, fg)
 	s.handlePullRequest(context.Background(), prEvent("opened", false))
@@ -119,7 +127,7 @@ func TestTeardown_OpenedStartsNothing(t *testing.T) {
 }
 
 func TestTeardown_RunsInBackground(t *testing.T) {
-	fg := &fakeGitops{teardownGate: make(chan struct{})}
+	fg := &fakeGitops{teardownGate: make(chan struct{}), pr: closedPR()}
 	s, _ := newTeardownServer(t, fg)
 
 	returned := make(chan struct{})
@@ -151,6 +159,7 @@ func TestTeardown_RunsInBackground(t *testing.T) {
 func TestTeardown_UpdateComments(t *testing.T) {
 	const msg = "chore(preview): remove backend-1 from feature-add-pricing"
 	fg := &fakeGitops{
+		pr:      closedPR(),
 		catalog: []string{"backend-1", "backend-2", "front"},
 		teardownResult: &gitops.TeardownResult{
 			Values: preview.PreviewValues{Services: []preview.ServiceEntry{
@@ -214,6 +223,7 @@ func TestTeardown_UpdateComments(t *testing.T) {
 func TestTeardown_DeleteComment(t *testing.T) {
 	const msg = "chore(preview): delete feature-add-pricing preview"
 	fg := &fakeGitops{
+		pr: closedPR(),
 		teardownResult: &gitops.TeardownResult{
 			Removed:       []string{"backend-1"},
 			Deleted:       true,
@@ -225,7 +235,7 @@ func TestTeardown_DeleteComment(t *testing.T) {
 	closeAndWait(t, s)
 
 	wantComment := "## 🧹 Preview: `feature-add-pricing`\n\n" +
-		"Preview deleted: no open PR remains.\n\n" +
+		"Preview deleted (PR closed): no other PR is pinned.\n\n" +
 		"---\n" +
 		"🔗 [" + msg + "](" + teardownCommitURL + ")"
 	if len(fg.upserts) != 1 || fg.upserts[0].body != wantComment {
@@ -241,7 +251,7 @@ func TestTeardown_DeleteComment(t *testing.T) {
 }
 
 func TestTeardown_Failure(t *testing.T) {
-	fg := &fakeGitops{teardownErr: errors.New("boom")}
+	fg := &fakeGitops{teardownErr: errors.New("boom"), pr: closedPR()}
 	s, capture := newTeardownServer(t, fg)
 	closeAndWait(t, s)
 
@@ -259,7 +269,7 @@ func TestTeardown_Failure(t *testing.T) {
 }
 
 func TestTeardown_NothingRemoved(t *testing.T) {
-	fg := &fakeGitops{}
+	fg := &fakeGitops{pr: closedPR()}
 	s, capture := newTeardownServer(t, fg)
 	closeAndWait(t, s)
 
@@ -277,7 +287,7 @@ func TestTeardown_NothingRemoved(t *testing.T) {
 }
 
 func TestTeardown_PanicRecovered(t *testing.T) {
-	fg := &fakeGitops{teardownPanic: true}
+	fg := &fakeGitops{teardownPanic: true, pr: closedPR()}
 	s, capture := newTeardownServer(t, fg)
 	closeAndWait(t, s)
 

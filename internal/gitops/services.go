@@ -19,6 +19,36 @@ type ServiceCatalog struct {
 	Services []string
 	// URLs is the validated `preview` block; its zero value means off.
 	URLs preview.URLConfig
+	// Label is the pull request label that requests a preview (preview.label,
+	// default "preview"). GitHub label names compare case-insensitively.
+	Label string
+	// Repos maps each service to its git URL, as written in serviceRepos.
+	Repos map[string]string
+}
+
+// defaultLabel is the preview label when preview.label is absent.
+const defaultLabel = "preview"
+
+// ServicesForRepo returns, in catalog order, the services whose git URL is
+// https://github.com/<owner>/<repo>, compared lowercased and with a trailing
+// "/" then ".git" removed. Other URL forms (SSH, GitHub Enterprise) never
+// match.
+func (c *ServiceCatalog) ServicesForRepo(owner, repo string) []string {
+	want := strings.ToLower("https://github.com/" + owner + "/" + repo)
+	var out []string
+	for _, name := range c.Services {
+		if normalizeRepoURL(c.Repos[name]) == want {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// normalizeRepoURL lowercases url and removes a trailing "/" then ".git".
+func normalizeRepoURL(url string) string {
+	u := strings.ToLower(url)
+	u = strings.TrimSuffix(u, "/")
+	return strings.TrimSuffix(u, ".git")
 }
 
 // errMalformedPreview is wrapped by every preview block validation error.
@@ -28,6 +58,9 @@ var errMalformedPreview = errors.New("malformed preview block")
 // [a-z0-9-] that neither start nor end with a hyphen. No scheme, no path, no
 // leading or trailing dot.
 var domainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
+
+// strTag is the resolved YAML tag of a string scalar.
+const strTag = "!!str"
 
 // pairStride is the step between keys in a mapping node's Content, which
 // alternates key and value nodes.
@@ -45,6 +78,7 @@ type previewBlock struct {
 	Domain domainName              `yaml:"domain"`
 	TLS    *tlsFlag                `yaml:"tls"`
 	Expose map[string]*exposeEntry `yaml:"expose"`
+	Label  *labelName              `yaml:"label"`
 }
 
 type exposeEntry struct {
@@ -56,7 +90,7 @@ type exposeEntry struct {
 type domainName string
 
 func (d *domainName) UnmarshalYAML(n *yaml.Node) error {
-	if n.Tag != "!!str" {
+	if n.Tag != strTag {
 		return malformed("preview.domain", "must be a string")
 	}
 	if !domainPattern.MatchString(n.Value) {
@@ -64,6 +98,18 @@ func (d *domainName) UnmarshalYAML(n *yaml.Node) error {
 			"%q must be a lowercase bare domain (no scheme, no path, no leading or trailing dot)", n.Value)
 	}
 	*d = domainName(n.Value)
+	return nil
+}
+
+// labelName is preview.label. It only accepts a non-empty YAML string; a YAML
+// null leaves the field unset.
+type labelName string
+
+func (l *labelName) UnmarshalYAML(n *yaml.Node) error {
+	if n.Tag != strTag || n.Value == "" {
+		return malformed("preview.label", "must be a non-empty string")
+	}
+	*l = labelName(n.Value)
 	return nil
 }
 
@@ -96,14 +142,28 @@ func ParseServices(raw []byte) (*ServiceCatalog, error) {
 		return nil, errors.New("services.yaml: missing 'serviceRepos' mapping")
 	}
 	services := make([]string, 0, len(doc.ServiceRepos.Content)/pairStride)
+	repos := make(map[string]string, len(doc.ServiceRepos.Content)/pairStride)
 	for i := 0; i+1 < len(doc.ServiceRepos.Content); i += pairStride {
-		services = append(services, doc.ServiceRepos.Content[i].Value)
+		name := doc.ServiceRepos.Content[i].Value
+		val := doc.ServiceRepos.Content[i+1]
+		if val.Kind == yaml.AliasNode && val.Alias != nil {
+			val = val.Alias
+		}
+		if val.Kind != yaml.ScalarNode || val.Tag != strTag {
+			return nil, fmt.Errorf("services.yaml: serviceRepos.%s must be a string", name)
+		}
+		services = append(services, name)
+		repos[name] = val.Value
 	}
 	urls, err := previewURLs(doc.Preview)
 	if err != nil {
 		return nil, fmt.Errorf("services.yaml: %w", err)
 	}
-	return &ServiceCatalog{Services: services, URLs: urls}, nil
+	label := defaultLabel
+	if doc.Preview != nil && doc.Preview.Label != nil {
+		label = string(*doc.Preview.Label)
+	}
+	return &ServiceCatalog{Services: services, URLs: urls, Label: label, Repos: repos}, nil
 }
 
 // previewURLs validates the decoded preview block. An absent block or an

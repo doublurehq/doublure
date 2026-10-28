@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,8 +26,13 @@ type Server struct {
 	// deliveries are dispatched.
 	allowedInstallationID int64
 	router                chi.Router
-	// bg tracks background work (PR-close teardowns) for WaitBackground.
+	// bg tracks background jobs (reconciles), queued or running,
+	// for WaitBackground.
 	bg sync.WaitGroup
+	// jobs serializes background jobs: at most one runs at a time.
+	jobs sync.Mutex
+	// jobTimeout caps each background job, counted from when it holds jobs.
+	jobTimeout time.Duration
 }
 
 func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string, allowedInstallationID int64) *Server {
@@ -35,6 +41,7 @@ func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string, a
 		gitops:                gitops,
 		deployToken:           deployToken,
 		allowedInstallationID: allowedInstallationID,
+		jobTimeout:            reconcileTimeout,
 	}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -59,7 +66,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// WaitBackground blocks until every background teardown has finished. It
+// WaitBackground blocks until every background job has finished. It
 // returns nil once they are done, or ctx.Err() when ctx expires first.
 func (s *Server) WaitBackground(ctx context.Context) error {
 	done := make(chan struct{})

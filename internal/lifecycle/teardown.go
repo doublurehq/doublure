@@ -9,6 +9,9 @@ import (
 	"github.com/doublurehq/doublure/internal/preview"
 )
 
+// PRClosedReason is the teardown reason for a closed (or merged) PR.
+const PRClosedReason = "PR closed"
+
 // TeardownAPI is the subset of gitops.Client used by TeardownPR.
 type TeardownAPI interface {
 	TeardownPreviewWithRetry(
@@ -21,7 +24,7 @@ type TeardownAPI interface {
 	FanOutPRComments(ctx context.Context, vals preview.PreviewValues, body string) error
 }
 
-// Target identifies the preview and the closed PR to tear down.
+// Target identifies a preview and the PR to tear down or reconcile.
 type Target struct {
 	Slug     string
 	Owner    string
@@ -30,11 +33,11 @@ type Target struct {
 	Number   int
 }
 
-// TeardownPR unpins the closed PR from its preview (or deletes the preview when
-// no pin remains), then edits the closed PR's comment and, when the preview
-// survives, refreshes the remaining PRs' summaries. Comment failures are
-// logged and never undo the teardown.
-func TeardownPR(ctx context.Context, api TeardownAPI, tt Target) {
+// TeardownPR unpins the PR from its preview (or deletes the preview when no pin
+// remains), then edits the PR's comment, which states reason, and, when the
+// preview survives, refreshes the remaining PRs' summaries. Comment failures
+// are logged and never undo the teardown.
+func TeardownPR(ctx context.Context, api TeardownAPI, tt Target, reason string) {
 	result, err := api.TeardownPreviewWithRetry(ctx, tt.Slug, tt.Owner, tt.Repo, tt.Number)
 	if err != nil {
 		slog.ErrorContext(ctx, "preview teardown failed",
@@ -64,7 +67,7 @@ func TeardownPR(ctx context.Context, api TeardownAPI, tt Target) {
 	)
 
 	body := preview.BuildTeardownSummary(
-		tt.Slug, result.Removed, result.Deleted, result.CommitMessage, result.CommitURL,
+		tt.Slug, result.Removed, result.Deleted, reason, result.CommitMessage, result.CommitURL,
 	)
 	if upsertErr := api.UpsertPRComment(ctx, tt.Owner, tt.Repo, tt.Number, body); upsertErr != nil {
 		teardownCommentFailed(ctx, tt, upsertErr)

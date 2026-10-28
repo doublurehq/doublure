@@ -121,13 +121,13 @@ func (f *fakeAPI) GetPreview(_ context.Context, slug string) (*preview.PreviewVa
 	return vals, "blob-" + slug, nil
 }
 
-func (f *fakeAPI) PullRequestOpen(_ context.Context, owner, repo string, number int) (bool, error) {
+func (f *fakeAPI) GetPullRequest(_ context.Context, owner, repo string, number int) (*gitops.PullRequest, error) {
 	key := fmt.Sprintf("%s/%s#%d", owner, repo, number)
 	f.prReads = append(f.prReads, key)
 	if err := f.prErr[key]; err != nil {
-		return false, err
+		return nil, err
 	}
-	return f.prOpen[key], nil
+	return &gitops.PullRequest{Open: f.prOpen[key]}, nil
 }
 
 func (f *fakeAPI) DeletePreviewWithRetry(
