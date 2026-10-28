@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/doublurehq/doublure/compare/v0.8.0...v0.8.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **lifecycle:** skip the empty branch slug in payload teardown ([#36](https://github.com/doublurehq/doublure/issues/36)) ([7388e76](https://github.com/doublurehq/doublure/commit/7388e76e9558f3250c6c2f829faa02c7169af070))
+
 ## [0.8.0](https://github.com/doublurehq/doublure/compare/v0.7.0...v0.8.0) (2026-10-28)
 
 
