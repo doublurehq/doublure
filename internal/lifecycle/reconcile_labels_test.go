@@ -38,9 +38,22 @@ func TestReconcile_NamedLabelSharesPreviewAcrossRepos(t *testing.T) {
 	f.pr = fetchedPR("front", true, "preview:pricing")
 	f.pr.HeadRef = "x"
 	lifecycle.ReconcilePR(context.Background(), f, event("labeled", "front", "preview:pricing", "preview:pricing"))
+	// The second PR reads the preview the first one pinned front in.
+	f.previews = map[string]*preview.PreviewValues{"pricing": {Services: []preview.ServiceEntry{{
+		Name:      "front",
+		CommitSha: fetchedSHA,
+		Metadata:  &preview.Metadata{PRURL: "https://github.com/acme/front/pull/42"},
+	}}}}
 	f.pr = fetchedPR("monorepo", true, "Preview:Pricing")
 	f.pr.HeadRef = "y"
+	f.calls, f.upserts = nil, nil
 	lifecycle.ReconcilePR(context.Background(), f, event("labeled", "monorepo", "Preview:Pricing", "Preview:Pricing"))
+	if !slices.Contains(f.calls, "get:pricing") {
+		t.Errorf("calls = %v, want the holder check to read pricing", f.calls)
+	}
+	if len(f.upserts) != 0 {
+		t.Errorf("upserts = %v, want none: front is not a monorepo service", f.upserts)
+	}
 
 	if got := services(f.writes); !slices.Equal(got, []string{"front", "api", "worker"}) {
 		t.Fatalf("deployed = %v, want [front api worker]", got)
