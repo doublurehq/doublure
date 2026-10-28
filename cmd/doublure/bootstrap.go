@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -30,12 +31,13 @@ const (
 	manifestServerHost = "127.0.0.1"
 	ngrokAPI           = "http://127.0.0.1:4040/api/tunnels"
 	manifestTimeout    = 5 * time.Minute
+	webhookPath        = "/webhooks/github"
 )
 
-// bootstrapAppCmd creates a fresh dev GitHub App via the manifest flow and
-// writes its credentials to dev.private-key.pem and .env in the current
-// working directory. Requires a running ngrok tunnel on :8080 — the public
-// URL becomes the App's webhook endpoint.
+// bootstrapAppCmd creates a GitHub App via the manifest flow and writes its
+// credentials to dev.private-key.pem and .env in the current working
+// directory. The App's webhook URL comes from --webhook-url, or else from a
+// running ngrok tunnel on :8080.
 //
 // Documented at https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest.
 func bootstrapAppCmd() *cobra.Command {
@@ -45,12 +47,13 @@ func bootstrapAppCmd() *cobra.Command {
 		envPath    string
 		pemPath    string
 		owner      string
+		webhookURL string
 		assumeYes  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "bootstrap-app",
-		Short: "Create a dev GitHub App via manifest flow and write .env + PEM",
-		Long: `Create a development GitHub App through the manifest flow.
+		Short: "Create a GitHub App via manifest flow and write .env + PEM",
+		Long: `Create a GitHub App through the manifest flow.
 
 Prints a preflight plan describing what will be created, what files will
 be written, and what will be overwritten — then prompts for confirmation
@@ -64,6 +67,7 @@ before doing anything (skip with --yes).`,
 				envPath:    envPath,
 				pemPath:    pemPath,
 				owner:      owner,
+				webhookURL: webhookURL,
 				assumeYes:  assumeYes,
 			})
 		},
@@ -73,6 +77,8 @@ before doing anything (skip with --yes).`,
 	cmd.Flags().StringVar(&envPath, "env-file", ".env", "Path to write the .env file")
 	cmd.Flags().StringVar(&pemPath, "pem-file", "dev.private-key.pem", "Path to write the App private key")
 	cmd.Flags().StringVar(&owner, "owner", "", "Org login to install the App under (empty = personal account)")
+	cmd.Flags().StringVar(&webhookURL, "webhook-url", "",
+		"Public base URL of doublure; /webhooks/github is appended (default: the ngrok tunnel)")
 	cmd.Flags().BoolVarP(&assumeYes, "yes", "y", false, "Skip the confirmation prompt")
 	return cmd
 }
@@ -83,11 +89,12 @@ type bootstrapOpts struct {
 	envPath    string
 	pemPath    string
 	owner      string
+	webhookURL string
 	assumeYes  bool
 }
 
 func runBootstrap(ctx context.Context, stdin io.Reader, stdout io.Writer, opts bootstrapOpts) error {
-	webhookURL, err := readNgrokTunnel()
+	webhookURL, err := resolveWebhookURL(opts.webhookURL, readNgrokTunnel)
 	if err != nil {
 		return err
 	}
@@ -120,7 +127,7 @@ func runBootstrap(ctx context.Context, stdin io.Reader, stdout io.Writer, opts b
 		"name": opts.appName,
 		"url":  "http://localhost:8080",
 		"hook_attributes": map[string]any{
-			"url":    webhookURL + "/webhooks/github",
+			"url":    webhookURL,
 			"active": true,
 		},
 		"redirect_url": redirectURL,
@@ -216,7 +223,7 @@ func printPlan(w io.Writer, opts bootstrapOpts, webhookURL string) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  1. Create a new GitHub App")
 	fmt.Fprintf(w, "       name:        %s\n", opts.appName)
-	fmt.Fprintf(w, "       webhook URL: %s/webhooks/github\n", webhookURL)
+	fmt.Fprintf(w, "       webhook URL: %s\n", webhookURL)
 	if opts.owner != "" {
 		fmt.Fprintf(w, "       owner:       %s (organization)\n", opts.owner)
 	} else {
@@ -309,6 +316,34 @@ func bootstrapMux(manifest, state, org string, codeCh chan<- string, errCh chan<
 		codeCh <- code
 	})
 	return mux
+}
+
+// resolveWebhookURL returns the App's full webhook URL. With flag empty it
+// asks ngrok for the tunnel URL and returns ngrok's error unchanged. Otherwise
+// flag must be an absolute https URL without credentials, query or fragment;
+// webhookPath is appended unless the path already ends with it.
+func resolveWebhookURL(flag string, ngrok func() (string, error)) (string, error) {
+	if flag == "" {
+		base, err := ngrok()
+		if err != nil {
+			return "", err
+		}
+		return base + webhookPath, nil
+	}
+	invalid := fmt.Errorf(
+		"--webhook-url must be an absolute https URL without credentials, query or fragment, got %q",
+		flag,
+	)
+	u, err := url.Parse(flag)
+	if err != nil || strings.ContainsAny(flag, "?#") || u.Scheme != "https" || u.User != nil ||
+		u.Hostname() == "" || strings.HasSuffix(u.Host, ":") {
+		return "", invalid
+	}
+	p := strings.TrimRight(u.EscapedPath(), "/")
+	if !strings.HasSuffix(p, webhookPath) {
+		p += webhookPath
+	}
+	return u.Scheme + "://" + u.Host + p, nil
 }
 
 // readNgrokTunnel queries the local ngrok inspector for the first https

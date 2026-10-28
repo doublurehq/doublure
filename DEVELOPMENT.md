@@ -1,11 +1,11 @@
 # Development
 
-Local setup for doublure: ngrok tunnel, GitHub App, env, smoke test.
+Local setup for doublure: ngrok tunnel (or a public URL), GitHub App, env, smoke test.
 
 ## Prerequisites
 
 - Go 1.25+
-- `ngrok`
+- `ngrok` (unless doublure has a public URL you pass as `DOUBLURE_WEBHOOK_URL`)
 - `gh` CLI, authenticated (`gh auth status`)
 - GitHub account with admin access to the gitops repo
 
@@ -14,6 +14,7 @@ Local setup for doublure: ngrok tunnel, GitHub App, env, smoke test.
 ```bash
 # Terminal 1 — start the webhook tunnel
 ngrok http 8080
+# with a reserved ngrok domain: ngrok http 8080 --url https://<domain> (the URL survives restarts)
 
 # Terminal 2 — from the repository root
 make dev-bootstrap         # shows a preflight plan, then (on y) creates the App + writes .env + PEM
@@ -31,7 +32,7 @@ That's the whole loop. The sections below explain each step in case something go
 
 ## What `make dev-bootstrap` does
 
-1. Reads the public HTTPS URL of your ngrok tunnel from the local ngrok inspector (`http://127.0.0.1:4040/api/tunnels`).
+1. Uses `--webhook-url` (`DOUBLURE_WEBHOOK_URL`) when set; otherwise reads the public HTTPS URL of your ngrok tunnel from the local ngrok inspector (`http://127.0.0.1:4040/api/tunnels`). `/webhooks/github` is appended.
 2. Generates a webhook secret and a deploy token locally.
 3. Starts a temp HTTP listener on an ephemeral port and opens your browser to a page that POSTs a GitHub App manifest to `github.com/settings/apps/new`.
 4. After you click **Create GitHub App**, GitHub redirects back to the listener with a one-time code.
@@ -50,6 +51,7 @@ Flags worth knowing:
 | `--gitops-repo` | (empty) | Pre-fills `GITOPS_REPO` in `.env` |
 | `--env-file` | `.env` | Where to write env vars |
 | `--pem-file` | `dev.private-key.pem` | Where to write the private key |
+| `--webhook-url` | (the ngrok tunnel) | Public base URL of doublure; `/webhooks/github` is appended |
 
 The `Makefile` target forwards `GITOPS_REPO` if set, otherwise the `.env` is written with `GITOPS_REPO=` and a comment reminding you to fill it in:
 
@@ -118,6 +120,7 @@ A signed-but-unparseable delivery is authentic and there is nothing to re-queue,
 |---|---|---|
 | `ngrok inspector not reachable at http://127.0.0.1:4040/api/tunnels` | ngrok isn't running | Start `ngrok http 8080` |
 | `no https tunnel found in ngrok` | ngrok is running but on a non-HTTPS protocol | `ngrok http 8080` (not tcp/tls) |
+| Deliveries return 404 on `POST /` (Recent Deliveries, or `http request … path=/ status=404` in the logs) | The App's webhook URL lacks `/webhooks/github` | In the App settings, set **Webhook URL** to `<base>/webhooks/github` |
 | `manifest exchange returned empty credentials` | The browser callback fired without a valid code | Retry `make dev-bootstrap`; check the GitHub tab for an error |
 | `doublure verify-app` returns `401 A JSON web token could not be decoded` | `GITHUB_APP_ID` and `dev.private-key.pem` don't match | Re-run `make dev-bootstrap`, or regenerate the private key from the App settings page and replace `dev.private-key.pem` |
 | `doublure verify-app` shows `Installations (0)` | App created but not installed anywhere | Open the App settings, click **Install App**, pick repos |
@@ -130,7 +133,7 @@ If `make dev-bootstrap` doesn't work in your environment, create the App by hand
 1. https://github.com/settings/apps/new — fill in:
    - **GitHub App name**: `doublure-dev-<your-handle>` (globally unique)
    - **Homepage URL**: `http://localhost:8080`
-   - **Webhook URL**: `<your-tunnel-url>/webhooks/github`
+   - **Webhook URL**: `<your-public-base-url>/webhooks/github`
    - **Webhook secret**: `openssl rand -hex 32` — save the value
    - **Repository permissions**: Contents R/W, Pull requests W, Metadata R
    - **Subscribe to events**: `pull_request` (installation / installation_repositories fire automatically — do not subscribe to them explicitly)
