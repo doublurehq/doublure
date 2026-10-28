@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/doublurehq/doublure/internal/gitops"
+	"github.com/doublurehq/doublure/internal/lifecycle"
 	"github.com/doublurehq/doublure/internal/preview"
 )
 
@@ -39,6 +40,7 @@ type gitopsAPI interface {
 		prNumber int,
 	) (*gitops.TeardownResult, error)
 	UpsertPRComment(ctx context.Context, owner, repo string, prNumber int, body string) error
+	GetPullRequest(ctx context.Context, owner, repo string, number int) (*gitops.PullRequest, error)
 }
 
 // DeployRequest is the body of POST /v1/deploy. All fields are required; the
@@ -116,8 +118,7 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		writeUpstreamError(ctx, logger, w, "fetch catalog", err)
 		return
 	}
-	catalog := services.Services
-	if !slices.Contains(catalog, req.Service) {
+	if !slices.Contains(services.Services, req.Service) {
 		writeJSONError(ctx, w, http.StatusNotFound,
 			fmt.Sprintf("service %q not in catalog", req.Service))
 		return
@@ -135,20 +136,14 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		WorkflowRunURL: req.WorkflowRunURL,
 	}
 
-	createMsg := fmt.Sprintf("chore(preview): create %s preview", slug)
-	updateMsg := fmt.Sprintf("chore(preview): update %s in %s", req.Service, slug)
-
-	result, err := s.gitops.WritePreviewWithRetry(
-		ctx, slug, catalog, req.Service, req.CommitSha, inputs, createMsg, updateMsg,
-	)
+	result, fanErr, err := lifecycle.DeployPR(ctx, s.gitops, services, inputs)
 	if err != nil {
 		writeUpstreamError(ctx, logger, w, "write preview", err)
 		return
 	}
 
 	resp := DeployResponse{PreviewSlug: slug, GitOpsCommitURL: result.CommitURL}
-	summary := preview.BuildSummary(slug, result.Values, services.URLs, result.CommitMessage, result.CommitURL)
-	if fanErr := s.gitops.FanOutPRComments(ctx, result.Values, summary); fanErr != nil {
+	if fanErr != nil {
 		logger.WarnContext(ctx, "comment fan-out had failures", slog.String("err", fanErr.Error()))
 		resp.Warnings = splitJoinedErr(fanErr)
 	}
