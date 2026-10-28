@@ -39,6 +39,7 @@ type fakeGitops struct {
 
 	capturedInputs   preview.DeployInputs
 	capturedCatalog  []string
+	capturedURLs     preview.URLConfig
 	capturedService  string
 	capturedSlug     string
 	fanOutBodyCalled bool
@@ -72,15 +73,22 @@ func (f *fakeGitops) WritePreviewWithRetry(
 	_ context.Context,
 	slug string,
 	catalog []string,
+	urls preview.URLConfig,
 	serviceName, _ string,
 	inputs preview.DeployInputs,
 	_, _ string,
 ) (*gitops.WriteResult, error) {
 	f.capturedSlug = slug
 	f.capturedCatalog = catalog
+	f.capturedURLs = urls
 	f.capturedService = serviceName
 	f.capturedInputs = inputs
-	return f.writeResult, f.writeErr
+	if f.writeResult == nil {
+		return nil, f.writeErr
+	}
+	result := *f.writeResult
+	result.Values = preview.ApplyHosts(f.writeResult.Values, slug, urls)
+	return &result, f.writeErr
 }
 
 func (f *fakeGitops) FanOutPRComments(_ context.Context, _ preview.PreviewValues, body string) error {

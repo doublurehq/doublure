@@ -68,3 +68,61 @@ func TestURLConfig_HostLabelBoundary(t *testing.T) {
 		t.Errorf("label %q, want a hashed suffix", label)
 	}
 }
+
+func TestURLConfig_Link(t *testing.T) {
+	urls := preview.URLConfig{
+		Domain: "127.0.0.1.nip.io",
+		Expose: map[string]string{"front": "/", "backend-1": "/docs"},
+	}
+	cases := []struct {
+		name     string
+		urls     preview.URLConfig
+		service  string
+		host     string
+		wantText string
+		wantURL  string
+		wantOK   bool
+	}{
+		{
+			name:     "exposed with path",
+			urls:     urls,
+			service:  "backend-1",
+			host:     "backend-1-feature-pricing.127.0.0.1.nip.io",
+			wantText: "backend-1-feature-pricing.127.0.0.1.nip.io/docs",
+			wantURL:  "http://backend-1-feature-pricing.127.0.0.1.nip.io/docs",
+			wantOK:   true,
+		},
+		{
+			name:    "exposed with no host",
+			urls:    urls,
+			service: "front",
+		},
+		{
+			name:     "host but no longer exposed",
+			urls:     urls,
+			service:  "backend-2",
+			host:     "backend-2-feature-pricing.127.0.0.1.nip.io",
+			wantText: "backend-2-feature-pricing.127.0.0.1.nip.io/",
+			wantURL:  "http://backend-2-feature-pricing.127.0.0.1.nip.io/",
+			wantOK:   true,
+		},
+		{
+			name:     "tls",
+			urls:     preview.URLConfig{Domain: "example.com", TLS: true, Expose: map[string]string{"front": "/"}},
+			service:  "front",
+			host:     "front-feature-pricing.example.com",
+			wantText: "front-feature-pricing.example.com/",
+			wantURL:  "https://front-feature-pricing.example.com/",
+			wantOK:   true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			text, url, ok := c.urls.Link(c.service, c.host)
+			if ok != c.wantOK || text != c.wantText || url != c.wantURL {
+				t.Errorf("Link(%q, %q) = (%q, %q, %v), want (%q, %q, %v)",
+					c.service, c.host, text, url, ok, c.wantText, c.wantURL, c.wantOK)
+			}
+		})
+	}
+}

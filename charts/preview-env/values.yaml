@@ -4,6 +4,7 @@
 # services:
 #   - name: backend-1
 #     commitSha: "abc123"         # optional — pinned to commit SHA (used as targetRevision and image.tag)
+#     host: "backend-1-feature-pricing.example.com"   # optional, written by doublure for exposed services; becomes app.ingress.host
 #     metadata:                    # optional — only present when service has a PR
 #       pr-author: "octocat"
 #       pr-url: "https://github.com/doublurehq/demo-backend-1/pull/42"
@@ -19,10 +20,10 @@ services: []
 
 serviceRepos: {}
 
-# preview: per-preview URLs, usually set once in the gitops repo's services.yaml.
-# When preview.domain is set, each service listed in preview.expose gets the
-# Helm parameter app.ingress.host = <service>-<release name>.<domain>, the
-# release name being the preview slug. Without preview.domain nothing changes.
+# Ingress hosts come from each service entry's host, written by doublure from
+# the preview block of the gitops repo's services.yaml, and are passed as the
+# Helm parameter app.ingress.host. An entry without host gets no ingress host.
+# The preview block is doublure's input; this chart does not read it:
 #
 # preview:
 #   domain: 127.0.0.1.nip.io      # lowercase bare domain, parent of every preview host

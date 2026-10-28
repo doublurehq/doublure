@@ -105,7 +105,7 @@ jobs:
             exit 1
           fi
 
-      - name: Render preview-env with per-preview hosts
+      - name: Render preview-env with doublure-written hosts
         run: |
           out=$(helm template feature-pricing charts/preview-env -f - <<'EOF'
           serviceRepos:
@@ -115,15 +115,10 @@ jobs:
           services:
             - name: backend-1
               commitSha: abc123
+              host: backend-1-feature-pricing.127.0.0.1.nip.io
             - name: backend-2
             - name: front
-          preview:
-            domain: 127.0.0.1.nip.io
-            tls: false
-            expose:
-              front: {}
-              backend-1:
-                path: /docs
+              host: front-feature-pricing.127.0.0.1.nip.io
           EOF
           )
           # shellcheck disable=SC2016

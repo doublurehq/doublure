@@ -234,6 +234,9 @@ func statusCode(err error) int {
 // the resulting values.yaml lists every service (the triggering one pinned to
 // commitSha, the rest tracking main).
 //
+// After every build or merge, preview.ApplyHosts sets each entry's host from
+// urls, so the written file carries the hosts of the current catalog.
+//
 // WriteResult is the outcome of a successful WritePreviewWithRetry call.
 // CommitMessage is whichever of {createMessage, updateMessage} was actually
 // used for the gitops commit, so callers can label PR summaries consistently
@@ -251,6 +254,7 @@ func (c *Client) WritePreviewWithRetry(
 	ctx context.Context,
 	slug string,
 	catalog []string,
+	urls preview.URLConfig,
 	serviceName, commitSha string,
 	inputs preview.DeployInputs,
 	createMessage, updateMessage string,
@@ -270,6 +274,7 @@ func (c *Client) WritePreviewWithRetry(
 		vals = preview.BuildPreviewValues(serviceName, commitSha, catalog, inputs)
 		message = createMessage
 	}
+	vals = preview.ApplyHosts(vals, slug, urls)
 
 	for attempt := 1; attempt <= MaxWriteRetries; attempt++ {
 		commitURL, writeErr := c.WritePreview(ctx, slug, vals, sha, message)
@@ -285,7 +290,7 @@ func (c *Client) WritePreviewWithRetry(
 			return nil, fmt.Errorf("conflict re-fetch: %w", getErr)
 		}
 		sha = latestSHA
-		vals = preview.UpdatePreviewValues(*latest, serviceName, commitSha, inputs)
+		vals = preview.ApplyHosts(preview.UpdatePreviewValues(*latest, serviceName, commitSha, inputs), slug, urls)
 		message = updateMessage
 	}
 	return nil, fmt.Errorf("write %s: %d attempts exhausted", previewPath(slug), MaxWriteRetries)

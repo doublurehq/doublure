@@ -14,6 +14,7 @@ type DeployAPI interface {
 		ctx context.Context,
 		slug string,
 		catalog []string,
+		urls preview.URLConfig,
 		serviceName, commitSha string,
 		inputs preview.DeployInputs,
 		createMessage, updateMessage string,
@@ -37,7 +38,7 @@ func DeployPR(
 	updateMsg := fmt.Sprintf("chore(preview): update %s in %s", inputs.ServiceName, slug)
 
 	result, err := api.WritePreviewWithRetry(
-		ctx, slug, catalog.Services, inputs.ServiceName, inputs.CommitSha, inputs, createMsg, updateMsg,
+		ctx, slug, catalog.Services, catalog.URLs, inputs.ServiceName, inputs.CommitSha, inputs, createMsg, updateMsg,
 	)
 	if err != nil {
 		return nil, nil, err //nolint:nilnil // the write error is the last result; no fan-out ran

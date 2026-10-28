@@ -34,10 +34,9 @@ spec:
       parameters:
         - name: app.image.tag
           value: {{ if .commitSha }}{{ .commitSha | quote }}{{ else }}"$ARGOCD_APP_REVISION"{{ end }}
-        {{- $preview := $.Values.preview | default dict }}
-        {{- if and $preview.domain (hasKey ($preview.expose | default dict) .name) }}
+        {{- if .host }}
         - name: app.ingress.host
-          value: {{ printf "%s-%s.%s" .name $.Release.Name $preview.domain | quote }}
+          value: {{ .host | quote }}
         {{- end }}
   destination:
     server: https://kubernetes.default.svc

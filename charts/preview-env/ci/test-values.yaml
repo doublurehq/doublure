@@ -1,11 +1,7 @@
 services:
   - name: backend-1
     commitSha: "abc123"
+    host: backend-1-x.example.com
 
 serviceRepos:
   backend-1: "https://github.com/acme/backend-1.git"
-
-preview:
-  domain: example.com
-  expose:
-    backend-1:

@@ -160,7 +160,10 @@ func TestWritePreview_Create(t *testing.T) {
 			t.Errorf("create request must not include sha; got body: %s", body)
 		}
 		w.WriteHeader(http.StatusCreated)
-		_, _ = io.WriteString(w, `{"content":{"sha":"new-blob"},"commit":{"html_url":"https://github.com/acme/gitops/commit/abc"}}`)
+		_, _ = io.WriteString(
+			w,
+			`{"content":{"sha":"new-blob"},"commit":{"html_url":"https://github.com/acme/gitops/commit/abc"}}`,
+		)
 	}))
 	defer srv.Close()
 
@@ -196,7 +199,13 @@ func TestWritePreview_Update(t *testing.T) {
 
 	c := newClient(t, srv)
 	vals := preview.BuildPreviewValues("backend-1", "newsha", []string{"backend-1"}, sampleInputs())
-	commitURL, err := c.WritePreview(context.Background(), "slug", vals, "old-blob", "chore(preview): update backend-1 in slug")
+	commitURL, err := c.WritePreview(
+		context.Background(),
+		"slug",
+		vals,
+		"old-blob",
+		"chore(preview): update backend-1 in slug",
+	)
 	if err != nil {
 		t.Fatalf("WritePreview: %v", err)
 	}
@@ -227,10 +236,16 @@ func TestWritePreview_Unauthorized(t *testing.T) {
 	}
 }
 
+// hostURLs exposes backend-1 under the domain 127.0.0.1.nip.io.
+func hostURLs() preview.URLConfig {
+	return preview.URLConfig{Domain: "127.0.0.1.nip.io", Expose: map[string]string{"backend-1": "/"}}
+}
+
 func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
 	var (
 		writeAttempts atomic.Int32
 		getAttempts   atomic.Int32
+		capturedBody  atomic.Value
 	)
 	const initialFile = `services:
   - name: backend-1
@@ -282,6 +297,9 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
 			if got := req["sha"]; got != "blob-2" {
 				t.Errorf("retry sha = %v, want blob-2", got)
 			}
+			content, _ := req["content"].(string)
+			decoded, _ := base64.StdEncoding.DecodeString(content)
+			capturedBody.Store(string(decoded))
 			w.WriteHeader(http.StatusOK)
 			_, _ = io.WriteString(w, `{"commit":{"html_url":"https://github.com/x/y/commit/winner"}}`)
 		default:
@@ -298,6 +316,7 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
 	result, err := c.WritePreviewWithRetry(
 		context.Background(), "slug",
 		[]string{"backend-1", "backend-2"},
+		hostURLs(),
 		"backend-1", "newsha", in,
 		"chore(preview): create slug preview",
 		"chore(preview): update backend-1 in slug",
@@ -325,6 +344,33 @@ func TestWritePreviewWithRetry_ConflictThenSuccess(t *testing.T) {
 	}
 	if result.Values.Services[1].CommitSha != "" {
 		t.Errorf("backend-2 commitSha = %q, want empty (main-tracking)", result.Values.Services[1].CommitSha)
+	}
+	assertWrittenHosts(t, result.Values, &capturedBody, "slug")
+}
+
+// assertWrittenHosts checks that the exposed backend-1 carries its host and
+// backend-2 none, both in the returned values and in the written file.
+func assertWrittenHosts(t *testing.T, vals preview.PreviewValues, body *atomic.Value, slug string) {
+	t.Helper()
+	want := "backend-1-" + slug + ".127.0.0.1.nip.io"
+	for _, svc := range vals.Services {
+		switch svc.Name {
+		case "backend-1":
+			if svc.Host != want {
+				t.Errorf("backend-1 host = %q, want %q", svc.Host, want)
+			}
+		default:
+			if svc.Host != "" {
+				t.Errorf("%s host = %q, want empty", svc.Name, svc.Host)
+			}
+		}
+	}
+	written, _ := body.Load().(string)
+	if !strings.Contains(written, "    host: "+want+"\n") {
+		t.Errorf("written body missing host %q:\n%s", want, written)
+	}
+	if strings.Count(written, "host:") != 1 {
+		t.Errorf("written body has %d hosts, want 1:\n%s", strings.Count(written, "host:"), written)
 	}
 }
 
@@ -356,6 +402,7 @@ func TestWritePreviewWithRetry_FreshCreateUsesCatalog(t *testing.T) {
 	result, err := c.WritePreviewWithRetry(
 		context.Background(), "fresh-slug",
 		[]string{"backend-1", "backend-2", "front"},
+		hostURLs(),
 		"backend-1", "abc1234567890", sampleInputs(),
 		"chore(preview): create fresh-slug preview",
 		"chore(preview): update backend-1 in fresh-slug",
@@ -386,6 +433,7 @@ func TestWritePreviewWithRetry_FreshCreateUsesCatalog(t *testing.T) {
 			t.Errorf("written body missing %q:\n%s", expect, written)
 		}
 	}
+	assertWrittenHosts(t, result.Values, &capturedBody, "fresh-slug")
 }
 
 func TestFanOutPRComments_UpdateAndCreate(t *testing.T) {

@@ -82,6 +82,7 @@ func (f *reconcileFake) WritePreviewWithRetry(
 	_ context.Context,
 	slug string,
 	catalog []string,
+	_ preview.URLConfig,
 	serviceName, commitSha string,
 	inputs preview.DeployInputs,
 	_, _ string,

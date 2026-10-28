@@ -29,6 +29,7 @@ type gitopsAPI interface {
 		ctx context.Context,
 		slug string,
 		catalog []string,
+		urls preview.URLConfig,
 		serviceName, commitSha string,
 		inputs preview.DeployInputs,
 		createMessage, updateMessage string,

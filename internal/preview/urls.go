@@ -26,22 +26,22 @@ func (c URLConfig) Host(service, slug string) string {
 }
 
 // Link returns the Markdown-safe link text (<host><path>) and URL
-// (<scheme>://<host><path>, with the path percent-encoded) for service in the
-// preview slug. The boolean is false when the feature is off or the service is
-// not exposed.
-func (c URLConfig) Link(service, slug string) (string, string, bool) {
-	if !c.Enabled() {
+// (<scheme>://<host><path>, with the path percent-encoded) for the host
+// written on service's entry. The path is service's Expose path, or "/" when
+// service is not a key of Expose. The boolean is false only when host is
+// empty.
+func (c URLConfig) Link(service, host string) (string, string, bool) {
+	if host == "" {
 		return "", "", false
 	}
 	path, exposed := c.Expose[service]
 	if !exposed {
-		return "", "", false
+		path = "/"
 	}
 	scheme := "https"
 	if !c.TLS {
 		scheme = "http"
 	}
-	host := c.Host(service, slug)
 	return markdownEscape(host + path), scheme + "://" + host + escapeURLPath(path), true
 }
 
