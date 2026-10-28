@@ -46,7 +46,7 @@ Authorization: Bearer $DOUBLURE_DEPLOY_TOKEN
   "pr_url": "...", "pr_number": "42", "pr_author": "...", "workflow_run_url": "..." }
 ```
 
-A manual deploy always targets the slug of `head_ref`, and skips the one-PR-per-service check. When that slug is not the PR's branch slug, nor the slug of a `preview:<name>` label on the PR, the cleanup sweep unpins it.
+A manual deploy always targets the slug of `head_ref`, and skips the one-PR-per-service check. The cleanup sweep keeps its pin only at the PR's target preview (the slug of its single `preview:<name>` label, or its branch slug when it has only the plain `preview` label), or at its branch slug when the PR has no preview label. A PR with conflicting `preview:<name>` labels keeps no pin. A webhook reconcile of the PR also unpins it from its branch slug and its named-label slugs other than its target.
 
 ## Status
 
