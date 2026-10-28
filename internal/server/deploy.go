@@ -40,6 +40,7 @@ type gitopsAPI interface {
 		prNumber int,
 	) (*gitops.TeardownResult, error)
 	UpsertPRComment(ctx context.Context, owner, repo string, prNumber int, body string) error
+	GetPreview(ctx context.Context, slug string) (*preview.PreviewValues, string, error)
 	GetPullRequest(ctx context.Context, owner, repo string, number int) (*gitops.PullRequest, error)
 }
 
@@ -136,7 +137,7 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		WorkflowRunURL: req.WorkflowRunURL,
 	}
 
-	result, fanErr, err := lifecycle.DeployPR(ctx, s.gitops, services, inputs)
+	result, fanErr, err := lifecycle.DeployPR(ctx, s.gitops, services, slug, inputs)
 	if err != nil {
 		writeUpstreamError(ctx, logger, w, "write preview", err)
 		return

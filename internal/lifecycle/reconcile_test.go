@@ -27,20 +27,40 @@ type deployCall struct {
 }
 
 // reconcileFake is an in-memory ReconcileAPI. The catalog is parsed from
-// reconcileServices unless catalogErr is set.
+// reconcileServices unless catalogErr is set. teardownBySlug, when it has the
+// slug, overrides teardown. previews is what GetPreview reads, unless
+// previewErr is set; an unknown slug is ErrNotFound. calls logs, in order,
+// "teardown:<slug>", "get:<slug>", "write:<slug>", "upsert" and "fanout".
 type reconcileFake struct {
-	catalogErr error
-	pr         *gitops.PullRequest
-	prErr      error
-	writeErr   map[string]error
-	fanErr     error
-	teardown   *gitops.TeardownResult
+	catalogErr     error
+	pr             *gitops.PullRequest
+	prErr          error
+	writeErr       map[string]error
+	fanErr         error
+	upsertErr      error
+	teardown       *gitops.TeardownResult
+	teardownBySlug map[string]*gitops.TeardownResult
+	previews       map[string]*preview.PreviewValues
+	previewErr     error
 
 	prReads   int
 	writes    []deployCall
 	fanOuts   []string
 	teardowns []teardownCall
 	upserts   []string
+	calls     []string
+}
+
+func (f *reconcileFake) GetPreview(_ context.Context, slug string) (*preview.PreviewValues, string, error) {
+	f.calls = append(f.calls, "get:"+slug)
+	if f.previewErr != nil {
+		return nil, "", f.previewErr
+	}
+	vals, ok := f.previews[slug]
+	if !ok {
+		return nil, "", gitops.ErrNotFound
+	}
+	return vals, "blob-" + slug, nil
 }
 
 func (f *reconcileFake) FetchServiceCatalog(context.Context) (*gitops.ServiceCatalog, error) {
@@ -69,6 +89,7 @@ func (f *reconcileFake) WritePreviewWithRetry(
 	if err := f.writeErr[serviceName]; err != nil {
 		return nil, err
 	}
+	f.calls = append(f.calls, "write:"+slug)
 	f.writes = append(f.writes, deployCall{
 		slug: slug, service: serviceName, commitSha: commitSha, catalog: catalog, inputs: inputs,
 	})
@@ -82,6 +103,7 @@ func (f *reconcileFake) WritePreviewWithRetry(
 }
 
 func (f *reconcileFake) FanOutPRComments(_ context.Context, _ preview.PreviewValues, body string) error {
+	f.calls = append(f.calls, "fanout")
 	f.fanOuts = append(f.fanOuts, body)
 	return f.fanErr
 }
@@ -91,7 +113,11 @@ func (f *reconcileFake) TeardownPreviewWithRetry(
 	slug, owner, repo string,
 	prNumber int,
 ) (*gitops.TeardownResult, error) {
+	f.calls = append(f.calls, "teardown:"+slug)
 	f.teardowns = append(f.teardowns, teardownCall{slug: slug, owner: owner, repo: repo, number: prNumber})
+	if res, ok := f.teardownBySlug[slug]; ok {
+		return res, nil
+	}
 	if f.teardown == nil {
 		return &gitops.TeardownResult{}, nil
 	}
@@ -99,8 +125,9 @@ func (f *reconcileFake) TeardownPreviewWithRetry(
 }
 
 func (f *reconcileFake) UpsertPRComment(_ context.Context, _, _ string, _ int, body string) error {
+	f.calls = append(f.calls, "upsert")
 	f.upserts = append(f.upserts, body)
-	return nil
+	return f.upsertErr
 }
 
 // event builds a reconcile event for acme/<repo>#42 whose payload carries
@@ -284,6 +311,8 @@ func TestReconcile_PayloadGuards(t *testing.T) {
 		{"labeled with another label", event("labeled", "front", "bug", "bug", "preview"), "other label"},
 		{"unlabeled another label", event("unlabeled", "front", "bug", "preview"), "other label"},
 		{"repo not in catalog", event("labeled", "unknown", "preview", "preview"), "repo not in catalog"},
+		{"labeled with an empty named label", event("labeled", "front", "preview:", "preview:"), "other label"},
+		{"opened with an empty named label", event("opened", "front", "", "preview:--"), "not labeled"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

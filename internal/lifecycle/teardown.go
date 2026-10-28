@@ -38,6 +38,18 @@ type Target struct {
 // preview survives, refreshes the remaining PRs' summaries. Comment failures
 // are logged and never undo the teardown.
 func TeardownPR(ctx context.Context, api TeardownAPI, tt Target, reason string) {
+	teardown(ctx, api, tt, reason, true)
+}
+
+// unpinOnly does what TeardownPR does but leaves the PR's comment alone, for a
+// PR whose comment shows where it lives now.
+func unpinOnly(ctx context.Context, api TeardownAPI, tt Target, reason string) {
+	teardown(ctx, api, tt, reason, false)
+}
+
+// teardown is TeardownPR, which edits the PR's comment only when commentPR is
+// true.
+func teardown(ctx context.Context, api TeardownAPI, tt Target, reason string, commentPR bool) {
 	result, err := api.TeardownPreviewWithRetry(ctx, tt.Slug, tt.Owner, tt.Repo, tt.Number)
 	if err != nil {
 		slog.ErrorContext(ctx, "preview teardown failed",
@@ -66,11 +78,13 @@ func TeardownPR(ctx context.Context, api TeardownAPI, tt Target, reason string) 
 		slog.String("gitops_commit_url", result.CommitURL),
 	)
 
-	body := preview.BuildTeardownSummary(
-		tt.Slug, result.Removed, result.Deleted, reason, result.CommitMessage, result.CommitURL,
-	)
-	if upsertErr := api.UpsertPRComment(ctx, tt.Owner, tt.Repo, tt.Number, body); upsertErr != nil {
-		teardownCommentFailed(ctx, tt, upsertErr)
+	if commentPR {
+		body := preview.BuildTeardownSummary(
+			tt.Slug, result.Removed, result.Deleted, reason, result.CommitMessage, result.CommitURL,
+		)
+		if upsertErr := api.UpsertPRComment(ctx, tt.Owner, tt.Repo, tt.Number, body); upsertErr != nil {
+			teardownCommentFailed(ctx, tt, upsertErr)
+		}
 	}
 	if result.Deleted {
 		return

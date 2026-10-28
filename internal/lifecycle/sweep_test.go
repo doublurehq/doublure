@@ -61,6 +61,19 @@ func (h *logCapture) find(level slog.Level, msg string) []map[string]slog.Value 
 	return out
 }
 
+// count returns the number of records logged at level.
+func (h *logCapture) count(level slog.Level) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := 0
+	for _, r := range h.entries {
+		if r.Level == level {
+			n++
+		}
+	}
+	return n
+}
+
 func captureLogs(t *testing.T) *logCapture {
 	t.Helper()
 	capture := &logCapture{}
@@ -87,8 +100,15 @@ type fanOut struct {
 
 // fakeAPI is an in-memory SweepAPI. files holds what GetPreview reads; fresh,
 // when set for a slug, is what DeletePreviewWithRetry re-reads (a deploy that
-// landed in between). PR states are keyed by "owner/repo#n".
+// landed in between). PR states, labels and head refs are keyed by
+// "owner/repo#n". label is the catalog's preview label, unless catalogErr is
+// set.
 type fakeAPI struct {
+	label      string
+	catalogErr error
+	prLabels   map[string][]string
+	prHeadRef  map[string]string
+
 	previews  []string
 	listErr   error
 	files     map[string]*preview.PreviewValues
@@ -103,6 +123,7 @@ type fakeAPI struct {
 	prReads   []string
 	teardowns []teardownCall
 	upserts   []string
+	bodies    []string
 	fanOuts   []fanOut
 }
 
@@ -127,7 +148,7 @@ func (f *fakeAPI) GetPullRequest(_ context.Context, owner, repo string, number i
 	if err := f.prErr[key]; err != nil {
 		return nil, err
 	}
-	return &gitops.PullRequest{Open: f.prOpen[key]}, nil
+	return &gitops.PullRequest{Open: f.prOpen[key], Labels: f.prLabels[key], HeadRef: f.prHeadRef[key]}, nil
 }
 
 func (f *fakeAPI) DeletePreviewWithRetry(
@@ -163,13 +184,17 @@ func (f *fakeAPI) TeardownPreviewWithRetry(
 	}, nil
 }
 
-func (f *fakeAPI) UpsertPRComment(_ context.Context, owner, repo string, prNumber int, _ string) error {
+func (f *fakeAPI) UpsertPRComment(_ context.Context, owner, repo string, prNumber int, body string) error {
 	f.upserts = append(f.upserts, fmt.Sprintf("%s/%s#%d", owner, repo, prNumber))
+	f.bodies = append(f.bodies, body)
 	return nil
 }
 
 func (f *fakeAPI) FetchServiceCatalog(context.Context) (*gitops.ServiceCatalog, error) {
-	return &gitops.ServiceCatalog{}, nil
+	if f.catalogErr != nil {
+		return nil, f.catalogErr
+	}
+	return &gitops.ServiceCatalog{Label: f.label}, nil
 }
 
 func (f *fakeAPI) FanOutPRComments(_ context.Context, vals preview.PreviewValues, body string) error {
