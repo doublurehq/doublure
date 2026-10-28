@@ -12,7 +12,6 @@ Shipped so far: [CHANGELOG.md](../CHANGELOG.md) and [GitHub releases](https://gi
 | 7 | **Install guide**: GitHub App, chart install, gitops repo contract, preview label | deployable by anyone | 9 |
 | 8 | **Slug length cap**: truncate and hash long branch slugs so they fit a 63-character namespace name and the `<service>-<slug>` host label | any branch name works | — |
 | 9 | **Bring your own chart**: per-service default branch, chart path, image-tag parameter and ingress-host parameter, instead of `main`, `k8s/`, `app.image.tag` and `app.ingress.host`, so existing company charts work unchanged | fits existing repos | — |
-| 10 | **`bootstrap-app --webhook-url`**: create the App with a given webhook URL, for installs without ngrok | deployable by anyone | — |
 | 11 | **E2E demo**: agent-opened PR → preview → tests against preview URL → merge → teardown | validate AI output | all |
 
 ## Non-goals
