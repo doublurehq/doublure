@@ -82,3 +82,27 @@ func BuildExpirySummary(slug string, ttl time.Duration, commitMessage, commitURL
 	return fmt.Sprintf("## 🧹 Preview: `%s`\n\nPreview deleted: no deploy for %s.\n\n---\n🔗 [%s](%s)",
 		slug, ttl, commitMessage, commitURL)
 }
+
+// BuildLabelConflictSummary renders the comment doublure leaves on a PR that
+// carries several named labels of the preview label base. labels are their
+// names, as written.
+func BuildLabelConflictSummary(base string, labels []string) string {
+	names := make([]string, 0, len(labels))
+	for _, label := range labels {
+		names = append(names, "`"+label+"`")
+	}
+	return fmt.Sprintf("## ⚠️ Preview: conflicting labels\n\nKeep one `%s:` label. This PR has %s.",
+		base, strings.Join(names, ", "))
+}
+
+// BuildServiceHeldSummary renders the comment doublure leaves on a PR it
+// refused to deploy because service is already pinned in the preview slug by
+// the PR at holderURL. base is the preview label.
+func BuildServiceHeldSummary(slug, service, holderURL, base string) string {
+	return fmt.Sprintf("## ⚠️ Preview: `%s`\n\n"+
+		"`%s` is already pinned in this preview by %s. "+
+		"Once that pull request leaves this preview, push to this pull request or re-add its label. "+
+		"If that pull request is closed, or now carries a different `%s:` label, "+
+		"it is released within the next cleanup run.",
+		slug, service, holderURL, base)
+}
