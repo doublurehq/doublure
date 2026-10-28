@@ -12,15 +12,17 @@ When code is written at machine speed, the bottleneck is validating and integrat
 - Changed services run at their PR commit, everything else at `main`.
 - CI builds once; doublure only writes desired state. It never builds images and never touches the cluster.
 - Argo CD deploys from git.
-- Previews are torn down when their PR closes, and swept so they don't accumulate.
+- Previews are torn down when their PR closes or the label is removed, and swept so they don't accumulate.
 
 ## How it works
 
-1. CI in a service repo builds and pushes the image, then calls `POST /v1/deploy` through the [deploy action](actions/deploy).
-2. doublure writes `previews/<branch-slug>/values.yaml` to your gitops repo (through your GitHub App) and comments on every PR in that preview.
+1. CI in a service repo builds and pushes the image.
+2. Adding the `preview` label to the PR makes doublure write `previews/<slug>/values.yaml` (every catalog service, the PR's at its head SHA) and comment on the PR; a push to the labeled PR updates it.
 3. An ArgoCD ApplicationSet picks up `previews/*` and deploys one namespace per preview, one Application per service.
-4. When a PR closes, doublure unpins its service in `previews/<slug>/values.yaml`, or deletes the file when no PR remains, and ArgoCD prunes the preview.
+4. Removing the label or closing the PR unpins its service, or deletes the file when no PR remains, and ArgoCD prunes the preview.
 5. `doublure cleanup` (an hourly CronJob) sweeps every preview: it deletes previews with no pinned service, or with no deploy within `CLEANUP_TTL` when set, and tears down the pins of closed PRs that step 4 missed. ArgoCD prunes what it removes.
+
+Manual trigger:
 
 ```
 POST /v1/deploy
@@ -32,7 +34,7 @@ Authorization: Bearer $DOUBLURE_DEPLOY_TOKEN
 
 ## Status
 
-Early development. Working: GitHub App auth, `/v1/deploy`, gitops writes with conflict retry, PR comments, webhook verification.
+Early development. Working: GitHub App auth, label-triggered previews, `/v1/deploy`, gitops writes with conflict retry, PR comments, webhook verification.
 
 ## Usage
 
@@ -52,7 +54,7 @@ Configuration (env):
 | `GITHUB_WEBHOOK_SECRET` | yes | |
 | `GITHUB_INSTALLATION_ID` | yes | |
 | `GITOPS_REPO` | yes | `owner/repo` |
-| `DOUBLURE_DEPLOY_TOKEN` | yes | bearer token CI uses for `/v1/deploy` |
+| `DOUBLURE_DEPLOY_TOKEN` | yes | bearer token for manual `/v1/deploy` calls |
 | `LISTEN_ADDR` | no | default `:8080` |
 
 Local setup: [DEVELOPMENT.md](DEVELOPMENT.md).

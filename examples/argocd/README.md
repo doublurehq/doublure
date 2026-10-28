@@ -50,4 +50,4 @@ helm install doublure oci://ghcr.io/doublurehq/charts/doublure --version 0.1.0 -
   --set existingSecret=doublure
 ```
 
-Set `ingress.enabled=true` and `ingress.host` to expose `/webhooks/github` (GitHub App webhook) and `/v1/deploy` (CI). The image tag defaults to the chart `appVersion` (`ghcr.io/doublurehq/doublure:<appVersion>`).
+Set `ingress.enabled=true` and `ingress.host` to expose `/webhooks/github` (GitHub App webhook) and `/v1/deploy` (manual trigger). The image tag defaults to the chart `appVersion` (`ghcr.io/doublurehq/doublure:<appVersion>`).

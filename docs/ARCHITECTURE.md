@@ -3,17 +3,17 @@
 Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talks to GitHub through the user's own GitHub App and never touches the cluster directly: ArgoCD does the deploys.
 
 ```
- service repo PR ──► CI builds + pushes image ──► POST /v1/deploy ─┐
-                                                                    ▼
- GitHub ── webhooks ──► POST /webhooks/github ─────────────► doublure serve ──► gitops repo
-   ▲                                                         │    (GitHub App)    previews/<slug>/values.yaml
-   └──────────────── PR comment (fan-out) ◄──────────────────┘                          │
-                                                                                         ▼
+ service repo CI ── builds + pushes the image (no deploy call)
+
+ PR label or push ── pull_request ──► POST /webhooks/github ── async reconcile ──► doublure serve ──► gitops repo
+ manual trigger ────────────────────► POST /v1/deploy ─────────────────────────────┘ │ (GitHub App)   previews/<slug>/values.yaml
+   ▲                                                                                 │                    │
+   └──────────────── PR comment (fan-out) ◄──────────────────────────────────────────┘                    ▼
                                      ArgoCD ApplicationSet (git dir generator: previews/*)
                                        └─ preview-env chart → AppProject + Namespace + one Application per service
                                             └─ service chart (k8s/ in each service repo) at commitSha or main
 
- pull_request closed ──► doublure serve (async) ── unpins the PR's services, or deletes previews/<slug>/values.yaml ──► ArgoCD prunes
+ label removed or pull_request closed ──► doublure serve (async) ── unpins the PR's services, or deletes previews/<slug>/values.yaml ──► ArgoCD prunes
  doublure cleanup (CronJob) ── deletes stale previews/<slug>/, unpins closed PRs ──► ArgoCD prunes
 ```
 
@@ -41,7 +41,8 @@ previews/<slug>/values.yaml      # written by doublure
 serviceRepos:
   backend-1: https://github.com/acme/backend-1.git
   front: https://github.com/acme/front.git
-preview:                        # optional: per-preview URLs, off without domain
+preview:                        # optional: preview label and per-preview URLs (URLs off without domain)
+  label: preview                # optional, default "preview": the PR label that creates the preview
   domain: 127.0.0.1.nip.io      # lowercase bare domain: no scheme, no path, no leading or trailing dot
   tls: false                    # optional, default true: https or http in the PR-comment links only
   expose:                       # services that get a host and a link
@@ -50,7 +51,10 @@ preview:                        # optional: per-preview URLs, off without domain
       path: /docs               # optional, default "/": PR-comment link only
 ```
 
-`services.yaml` is a value file of the `preview-env` chart and is read by doublure on every deploy. A malformed `preview` block fails `/v1/deploy` with an error naming the offending key. An `expose` entry for a service missing from `serviceRepos` is ignored.
+`services.yaml` is a value file of the `preview-env` chart and is read by doublure on every deploy. A malformed `preview` block fails `/v1/deploy` and makes every reconcile log `preview reconcile failed`, with an error naming the offending key. An `expose` entry for a service missing from `serviceRepos` is ignored.
+
+- `preview.label` must be a non-empty string; it is matched case-insensitively, like GitHub label names.
+- Every `serviceRepos` value must be a string. A PR's repo maps to the services whose URL is `https://github.com/<owner>/<repo>`, compared case-insensitively, with or without a trailing `/` or `.git`. Other URL forms (SSH, GitHub Enterprise) never match, so the label flow never deploys those services.
 
 ```yaml
 # previews/feature-pricing/values.yaml
@@ -58,6 +62,7 @@ services:
   - name: backend-1
     commitSha: "<sha>"          # pinned: targetRevision + image tag
     metadata: { pr-author, pr-url, pr-number, created-at, updated-at, vcs.ref.name, cicd.pipeline.run.url }
+                                # cicd.pipeline.run.url is "" for label deploys
   - name: backend-2             # no commitSha: tracks main
   - name: front
 ```
@@ -102,7 +107,7 @@ The `preview-env` chart ([`application.yaml`](../charts/preview-env/templates/ap
 - A Helm chart at `k8s/`.
 - A `main` branch: main-tracking services use `targetRevision: main`.
 - A Helm parameter `app.image.tag`: the service chart declares the [`app`](../charts/app) chart as a dependency aliased `app`.
-- Images tagged with the full git commit SHA: pinned services use the `commitSha` sent to `/v1/deploy`, main-tracking services use `$ARGOCD_APP_REVISION`.
+- Images tagged with the full git commit SHA: pinned services use the PR head SHA (label flow) or the `commit_sha` sent to `/v1/deploy`, main-tracking services use `$ARGOCD_APP_REVISION`.
 - For services in `preview.expose`: ingress enabled and a Helm parameter `app.ingress.host` setting the ingress host. Otherwise the PR-comment link is dead.
 - A service whose image is not built per commit (for example a database) may ignore `app.image.tag`.
 
@@ -133,17 +138,28 @@ POST /v1/deploy
 POST /webhooks/github
   X-Hub-Signature-256 verified (401 on mismatch)
   installation ≠ GITHUB_INSTALLATION_ID (ping exempt) → 403
-  pull_request closed → async teardown; other events → structured log only
+  pull_request opened/reopened/synchronize/labeled/unlabeled → async reconcile; closed → async teardown; other actions → log only
+  other events → structured log only
   parse failures / handler panics → logged, 200
 ```
 
-CI calls it through the [deploy action](../actions/deploy).
+Manual deploy flow (`/v1/deploy`): validate `service` against `services.yaml` → slugify `head_ref` → read or bootstrap `previews/<slug>/values.yaml` → write with SHA optimistic locking + 409 retry → PR comment fan-out (best-effort, failures returned as `warnings`).
 
-Deploy flow: validate `service` against `services.yaml` → slugify `head_ref` → read or bootstrap `previews/<slug>/values.yaml` → write with SHA optimistic locking + 409 retry → PR comment fan-out (best-effort, failures returned as `warnings`).
+Label flow: CI only builds and pushes images; the `preview` label (`preview.label`) on a PR decides whether it has a preview. doublure answers `opened`, `reopened`, `synchronize`, `labeled` and `unlabeled` deliveries 200 at once and reconciles the PR in the background:
 
-Deploys are triggered only by CI calling `/v1/deploy`, never by `pull_request` webhooks: CI knows when the image exists (build once, deploy many).
+1. A `labeled` or `unlabeled` delivery for another label, or an `opened`, `reopened` or `synchronize` delivery whose payload lacks the label, is skipped without calling GitHub.
+2. A repo not in the catalog is skipped with a log.
+3. Otherwise doublure re-reads the PR from GitHub and acts on its current state, labels and head SHA, never the payload's, so late or out-of-order deliveries converge on the current truth. Fork PRs (head repo different from the base repo) are skipped: CI can't push a fork's image.
+4. An open PR carrying the label deploys every catalog service of its repo, in catalog order, at the PR's head SHA, through the manual flow's write and comment fan-out. A failed service is logged and the next one still deploys.
+5. Otherwise (closed, or label removed) the PR is torn down, as in the teardown flow below.
 
-Teardown flow: a `pull_request` `closed` delivery (merged or not) is answered 200 at once, and the teardown runs in the background (20s budget; shutdown waits for it). doublure slugifies the PR's head branch, reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the closed PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The closed PR's comment is edited (or created) to say what was removed.
+doublure does not check the registry: an image not pushed yet leaves the pod in `ImagePullBackOff` until CI pushes it (kubelet back-off capped at 300s).
+
+Background jobs (reconciles and teardowns) run one at a time, in no guaranteed order; a reconcile reads the PR only once it runs. A reconcile has a 20s budget shared by its services; a service not reached in time is logged as failed. Shutdown waits up to 25s for queued and running jobs; jobs still queued then are dropped, and the cleanup sweeper catches missed teardowns of closed PRs.
+
+A labeled PR with no push for longer than `CLEANUP_TTL` is expired by the sweeper and not recreated while the label stays: push, or remove and re-add the label, to recreate it. The sweeper only unpins closed PRs, so a missed `unlabeled` delivery leaves the pins until the PR closes or the TTL expires.
+
+Teardown flow: a `pull_request` `closed` delivery (merged or not) is answered 200 at once, and the teardown runs in the background (20s budget; shutdown waits for it) without reading the PR, so a close still tears down when GitHub reads fail. A reconcile that finds the PR closed or without the label (for example after `unlabeled`) runs the same teardown. doublure slugifies the PR's head branch, reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The PR's comment is edited (or created) to say what was removed and why: `PR closed`, or ``label `<label>` removed``.
 
 Deleting the file drops `previews/<slug>/` from the git directory generator, and the ApplicationSet deletes the preview's Application and its resources. This requires the ApplicationSet controller policy `sync` (the default) or `create-delete`; with `create-only` or `create-update` a deleted preview keeps running. Previews whose branch was renamed after the deploy, closes missed while doublure was down, and pins written by a deploy after the PR closed are caught by the cleanup sweeper.
 
