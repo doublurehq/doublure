@@ -7,6 +7,7 @@ import (
 
 	gh "github.com/google/go-github/v71/github"
 
+	"github.com/doublurehq/doublure/internal/gitops"
 	"github.com/doublurehq/doublure/internal/lifecycle"
 	"github.com/doublurehq/doublure/internal/preview"
 )
@@ -52,7 +53,7 @@ func (s *Server) runJob(ctx context.Context, onPanic func(rec any), job func(con
 
 // startReconcile reconciles the event's PR with its preview in a background
 // job. Events missing the fields needed to find the PR, and closed events
-// without a head branch, start nothing. A closed event logs as a teardown.
+// with neither a head branch slug nor a named label slug, start nothing. A closed event logs as a teardown.
 func (s *Server) startReconcile(ctx context.Context, e *gh.PullRequestEvent) {
 	var labels []string
 	if pr := e.GetPullRequest(); pr != nil {
@@ -94,15 +95,24 @@ func (s *Server) startReconcile(ctx context.Context, e *gh.PullRequestEvent) {
 }
 
 // startClosed reconciles a closed event, logging as a teardown of the
-// payload's head branch.
+// payload's head branch. It starts nothing when the event misses the fields
+// needed to find the PR, or when neither its head branch nor a named label of
+// its payload has a slug.
 func (s *Server) startClosed(ctx context.Context, ev lifecycle.Event) {
 	slug := preview.Slugify(ev.HeadRef)
-	if slug == "" || missingPRFields(ev.Target) {
+	reason := ""
+	switch {
+	case missingPRFields(ev.Target):
+		reason = "missing pr fields"
+	case slug == "" && !hasNamedSlug(ev.Labels):
+		reason = "no preview slug"
+	}
+	if reason != "" {
 		slog.InfoContext(ctx, "preview teardown skipped",
 			slog.String("slug", slug),
 			slog.String("repo", ev.FullName),
 			slog.Int("pr_number", ev.Number),
-			slog.String("reason", "missing pr fields"),
+			slog.String("reason", reason),
 		)
 		return
 	}
@@ -117,4 +127,15 @@ func (s *Server) startClosed(ctx context.Context, ev lifecycle.Event) {
 	}, func(jctx context.Context) {
 		lifecycle.ReconcilePR(jctx, s.gitops, ev)
 	})
+}
+
+// hasNamedSlug reports whether labels hold a named label of the default
+// preview label with a non-empty slug.
+func hasNamedSlug(labels []string) bool {
+	for _, l := range labels {
+		if slug, named, _ := preview.ParseLabel(l, gitops.DefaultLabel); named && slug != "" {
+			return true
+		}
+	}
+	return false
 }
