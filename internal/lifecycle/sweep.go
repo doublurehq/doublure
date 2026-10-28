@@ -176,7 +176,7 @@ func teardownClosedPRs(ctx context.Context, api SweepAPI, slug string, vals prev
 			continue
 		}
 		if !pr.Open {
-			TeardownPR(ctx, api, t)
+			TeardownPR(ctx, api, t, PRClosedReason)
 		}
 	}
 }

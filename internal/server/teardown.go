@@ -52,6 +52,6 @@ func (s *Server) startTeardown(ctx context.Context, e *gh.PullRequestEvent) {
 		}()
 		tctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teardownTimeout)
 		defer cancel()
-		lifecycle.TeardownPR(tctx, s.gitops, tt)
+		lifecycle.TeardownPR(tctx, s.gitops, tt, lifecycle.PRClosedReason)
 	}()
 }

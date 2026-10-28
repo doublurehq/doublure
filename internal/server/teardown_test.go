@@ -225,7 +225,7 @@ func TestTeardown_DeleteComment(t *testing.T) {
 	closeAndWait(t, s)
 
 	wantComment := "## 🧹 Preview: `feature-add-pricing`\n\n" +
-		"Preview deleted: no open PR remains.\n\n" +
+		"Preview deleted (PR closed): no other PR is pinned.\n\n" +
 		"---\n" +
 		"🔗 [" + msg + "](" + teardownCommitURL + ")"
 	if len(fg.upserts) != 1 || fg.upserts[0].body != wantComment {

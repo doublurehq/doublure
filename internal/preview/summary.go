@@ -61,16 +61,17 @@ func BuildSummary(slug string, values PreviewValues, urls URLConfig, commitMessa
 	return b.String()
 }
 
-// BuildTeardownSummary renders the comment doublure leaves on a closed PR once
-// its services were unpinned from the preview, or the preview was deleted.
-func BuildTeardownSummary(slug string, removed []string, deleted bool, commitMessage, commitURL string) string {
-	sentence := "Preview deleted: no open PR remains."
+// BuildTeardownSummary renders the comment doublure leaves on a PR once its
+// services were unpinned from the preview, or the preview was deleted. reason
+// says why (for example "PR closed").
+func BuildTeardownSummary(slug string, removed []string, deleted bool, reason, commitMessage, commitURL string) string {
+	sentence := fmt.Sprintf("Preview deleted (%s): no other PR is pinned.", reason)
 	if !deleted {
 		names := make([]string, 0, len(removed))
 		for _, name := range removed {
 			names = append(names, "`"+name+"`")
 		}
-		sentence = fmt.Sprintf("Removed %s from this preview (PR closed).", strings.Join(names, ", "))
+		sentence = fmt.Sprintf("Removed %s from this preview (%s).", strings.Join(names, ", "), reason)
 	}
 	return fmt.Sprintf("## 🧹 Preview: `%s`\n\n%s\n\n---\n🔗 [%s](%s)", slug, sentence, commitMessage, commitURL)
 }

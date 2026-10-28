@@ -183,12 +183,14 @@ func TestBuildTeardownSummary(t *testing.T) {
 		name    string
 		removed []string
 		deleted bool
+		reason  string
 		message string
 		want    string
 	}{
 		{
 			name:    "one removed service",
 			removed: []string{"backend-1"},
+			reason:  "PR closed",
 			message: "chore(preview): remove backend-1 from feature-add-pricing",
 			want: "## 🧹 Preview: `feature-add-pricing`\n\n" +
 				"Removed `backend-1` from this preview (PR closed).\n\n" +
@@ -198,6 +200,7 @@ func TestBuildTeardownSummary(t *testing.T) {
 		{
 			name:    "two removed services",
 			removed: []string{"api", "worker"},
+			reason:  "PR closed",
 			message: "chore(preview): remove api, worker from feature-add-pricing",
 			want: "## 🧹 Preview: `feature-add-pricing`\n\n" +
 				"Removed `api`, `worker` from this preview (PR closed).\n\n" +
@@ -208,16 +211,38 @@ func TestBuildTeardownSummary(t *testing.T) {
 			name:    "deleted",
 			removed: []string{"backend-1"},
 			deleted: true,
+			reason:  "PR closed",
 			message: "chore(preview): delete feature-add-pricing preview",
 			want: "## 🧹 Preview: `feature-add-pricing`\n\n" +
-				"Preview deleted: no open PR remains.\n\n" +
+				"Preview deleted (PR closed): no other PR is pinned.\n\n" +
+				"---\n" +
+				"🔗 [chore(preview): delete feature-add-pricing preview](" + commitURL + ")",
+		},
+		{
+			name:    "label removed",
+			removed: []string{"backend-1"},
+			reason:  "label `preview` removed",
+			message: "chore(preview): remove backend-1 from feature-add-pricing",
+			want: "## 🧹 Preview: `feature-add-pricing`\n\n" +
+				"Removed `backend-1` from this preview (label `preview` removed).\n\n" +
+				"---\n" +
+				"🔗 [chore(preview): remove backend-1 from feature-add-pricing](" + commitURL + ")",
+		},
+		{
+			name:    "deleted after label removed",
+			removed: []string{"backend-1"},
+			deleted: true,
+			reason:  "label `preview` removed",
+			message: "chore(preview): delete feature-add-pricing preview",
+			want: "## 🧹 Preview: `feature-add-pricing`\n\n" +
+				"Preview deleted (label `preview` removed): no other PR is pinned.\n\n" +
 				"---\n" +
 				"🔗 [chore(preview): delete feature-add-pricing preview](" + commitURL + ")",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := preview.BuildTeardownSummary(slug, tc.removed, tc.deleted, tc.message, commitURL)
+			got := preview.BuildTeardownSummary(slug, tc.removed, tc.deleted, tc.reason, tc.message, commitURL)
 			if got != tc.want {
 				t.Errorf("summary mismatch\n got:\n%s\nwant:\n%s", got, tc.want)
 			}
