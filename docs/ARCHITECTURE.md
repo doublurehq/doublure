@@ -61,6 +61,7 @@ preview:                        # optional: preview label and per-preview URLs (
 services:
   - name: backend-1
     commitSha: "<sha>"          # pinned: targetRevision + image tag
+    host: backend-1-feature-pricing.127.0.0.1.nip.io   # exposed services only: ingress host written by doublure
     metadata: { pr-author, pr-url, pr-number, created-at, updated-at, vcs.ref.name, cicd.pipeline.run.url }
                                 # cicd.pipeline.run.url is "" for label deploys
   - name: backend-2             # no commitSha: tracks main
@@ -69,14 +70,16 @@ services:
 
 ## Per-preview URLs
 
-Each exposed service of a preview gets the host `<service>-<slug>.<domain>`. One wildcard DNS record (and, for TLS, one wildcard certificate) for `*.<domain>` covers every preview.
+Each exposed service of a preview gets the host `<service>-<slug>.<domain>` (the `<service>-<slug>` label capped at 63 characters, see below). One wildcard DNS record (and, for TLS, one wildcard certificate) for `*.<domain>` covers every preview.
 
-- The `preview-env` chart passes it to the service's Application as the Helm parameter `app.ingress.host`.
+- doublure writes the host into each exposed entry's `host` in `values.yaml`, and `preview-env` passes it to the service's Application as the Helm parameter `app.ingress.host`.
 - doublure appends ` · [<host><path>](<scheme>://<host><path>)` to the service's line in the PR comment.
 
 `tls` only picks the link scheme; ingress TLS, the ingress class and annotations stay in the service chart. Services not in `expose` (non-HTTP services, for example) get no host and no link.
 
-Known limit: a DNS label is at most 63 characters. Until the slug length cap lands (see [ROADMAP](ROADMAP.md)), a long `<service>-<slug>` label makes that service's ingress invalid.
+Length caps: a slug longer than 53 characters (Helm's release-name limit, which Argo CD hits through the ApplicationSet's `releaseName`) and a `<service>-<slug>` host label longer than 63 characters (the DNS label limit) are cut, and a hash of the full value (6 hex characters) is appended. For example, the branch `feature/very-long-branch-name-that-keeps-going-and-going-past-the-helm-limit` gets the slug `feature-very-long-branch-name-that-keeps-going-5bec34`, and the service `front-office-web` in it gets the host `front-office-web-feature-very-long-branch-name-that-keep-395ff3.<domain>`.
+
+Upgrade order: upgrade doublure (0.10.0 or later) first, then `preview-env` (0.3.0 or later). `preview-env` 0.3.0 reads only `host`, so an entry without it gets no ingress host. Preview files written by an older doublure carry no `host` until their next deploy write.
 
 ## Pinned and main-tracking services
 
