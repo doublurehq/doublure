@@ -138,28 +138,28 @@ POST /v1/deploy
 POST /webhooks/github
   X-Hub-Signature-256 verified (401 on mismatch)
   installation ≠ GITHUB_INSTALLATION_ID (ping exempt) → 403
-  pull_request opened/reopened/synchronize/labeled/unlabeled → async reconcile; closed → async teardown; other actions → log only
+  pull_request opened/reopened/synchronize/labeled/unlabeled/closed → async reconcile; other actions → log only
   other events → structured log only
   parse failures / handler panics → logged, 200
 ```
 
 Manual deploy flow (`/v1/deploy`): validate `service` against `services.yaml` → slugify `head_ref` → read or bootstrap `previews/<slug>/values.yaml` → write with SHA optimistic locking + 409 retry → PR comment fan-out (best-effort, failures returned as `warnings`).
 
-Label flow: CI only builds and pushes images; the `preview` label (`preview.label`) on a PR decides whether it has a preview. doublure answers `opened`, `reopened`, `synchronize`, `labeled` and `unlabeled` deliveries 200 at once and reconciles the PR in the background:
+Label flow: CI only builds and pushes images; the `preview` label (`preview.label`) on a PR decides whether it has a preview. doublure answers `opened`, `reopened`, `synchronize`, `labeled`, `unlabeled` and `closed` deliveries 200 at once and reconciles the PR in the background:
 
 1. A `labeled` or `unlabeled` delivery for another label, or an `opened`, `reopened` or `synchronize` delivery whose payload lacks the label, is skipped without calling GitHub.
-2. A repo not in the catalog is skipped with a log.
-3. Otherwise doublure re-reads the PR from GitHub and acts on its current state, labels and head SHA, never the payload's, so late or out-of-order deliveries converge on the current truth. Fork PRs (head repo different from the base repo) are skipped: CI can't push a fork's image.
+2. A repo not in the catalog is skipped with a log. Neither step applies to `closed`.
+3. Otherwise doublure re-reads the PR from GitHub and acts on its current state, labels and head SHA, never the payload's, so late or out-of-order deliveries, `closed` included, converge on the current truth: a `closed` delivery running after the PR was reopened and labeled deploys it. Fork PRs (head repo different from the base repo) are skipped: CI can't push a fork's image; a closed fork PR is still torn down.
 4. An open PR carrying the label deploys every catalog service of its repo, in catalog order, at the PR's head SHA, through the manual flow's write and comment fan-out. A failed service is logged and the next one still deploys.
 5. Otherwise (closed, or label removed) the PR is torn down, as in the teardown flow below.
 
 doublure does not check the registry: an image not pushed yet leaves the pod in `ImagePullBackOff` until CI pushes it (kubelet back-off capped at 300s).
 
-Background jobs (reconciles and teardowns) run one at a time, in no guaranteed order; a reconcile reads the PR only once it runs. A reconcile has a 20s budget shared by its services; a service not reached in time is logged as failed. Shutdown waits up to 25s for queued and running jobs; jobs still queued then are dropped, and the cleanup sweeper catches missed teardowns of closed PRs.
+Background reconciles run one at a time, in no guaranteed order; a reconcile reads the PR only once it runs. A reconcile has a 20s budget, counted from when it starts running and shared by its services or its teardown; a service not reached in time is logged as failed. Shutdown waits up to 25s for queued and running jobs; jobs still queued then are dropped, and the cleanup sweeper catches missed teardowns of closed PRs.
 
 A labeled PR with no push for longer than `CLEANUP_TTL` is expired by the sweeper and not recreated while the label stays: push, or remove and re-add the label, to recreate it. The sweeper only unpins closed PRs, so a missed `unlabeled` delivery leaves the pins until the PR closes or the TTL expires.
 
-Teardown flow: a `pull_request` `closed` delivery (merged or not) is answered 200 at once, and the teardown runs in the background (20s budget; shutdown waits for it) without reading the PR, so a close still tears down when GitHub reads fail. A reconcile that finds the PR closed or without the label (for example after `unlabeled`) runs the same teardown. doublure slugifies the PR's head branch, reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The PR's comment is edited (or created) to say what was removed and why: `PR closed`, or ``label `<label>` removed``.
+Teardown flow: a reconcile that finds the PR closed (merged or not) or without the label (for example after `unlabeled`) tears it down. A `closed` delivery whose reconcile can't read the catalog or the PR falls back to tearing down the payload's head branch as closed, logged as a warning, so a close still tears down when GitHub reads fail. doublure slugifies the PR's head branch, reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The PR's comment is edited (or created) to say what was removed and why: `PR closed`, or ``label `<label>` removed``.
 
 Deleting the file drops `previews/<slug>/` from the git directory generator, and the ApplicationSet deletes the preview's Application and its resources. This requires the ApplicationSet controller policy `sync` (the default) or `create-delete`; with `create-only` or `create-update` a deleted preview keeps running. Previews whose branch was renamed after the deploy, closes missed while doublure was down, and pins written by a deploy after the PR closed are caught by the cleanup sweeper.
 

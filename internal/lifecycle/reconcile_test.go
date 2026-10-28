@@ -223,6 +223,32 @@ func TestReconcile_UnlabeledClosedTearsDownAsClosed(t *testing.T) {
 	}
 }
 
+func TestReconcile_ClosedTearsDownOutsideCatalogAndForks(t *testing.T) {
+	cases := []struct {
+		name string
+		repo string
+		fork bool
+	}{
+		{name: "repo not in catalog", repo: "docs"},
+		{name: "fork pr", repo: "front", fork: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			captureLogs(t)
+			f := &reconcileFake{pr: fetchedPR(tc.repo, false)}
+			if tc.fork {
+				f.pr.HeadFullName = "octocat/" + tc.repo
+			}
+			lifecycle.ReconcilePR(context.Background(), f, event("closed", tc.repo, ""))
+
+			want := teardownCall{slug: "feature-pricing", owner: "acme", repo: tc.repo, number: 42}
+			if len(f.teardowns) != 1 || f.teardowns[0] != want {
+				t.Errorf("teardowns = %+v, want [%+v]", f.teardowns, want)
+			}
+		})
+	}
+}
+
 func TestReconcile_TwoServicesInCatalogOrder(t *testing.T) {
 	captureLogs(t)
 	f := &reconcileFake{pr: fetchedPR("monorepo", true, "preview")}

@@ -82,16 +82,78 @@ func drain(started chan string) []string {
 	}
 }
 
-func TestReconcile_ClosedReadsNeitherCatalogNorPR(t *testing.T) {
+func TestReconcile_ClosedButReopenedAndLabeledDeploys(t *testing.T) {
 	fg := reconcileFake()
 	s, _ := newTeardownServer(t, fg)
-	deliver(t, s, prEvent("closed", true))
+	deliver(t, s, prEvent("closed", false))
 
-	if got := drain(fg.started); len(got) != 1 || got[0] != "teardown" {
-		t.Errorf("started = %v, want [teardown]", got)
+	if fg.prCalls != 1 {
+		t.Errorf("GetPullRequest calls = %d, want 1", fg.prCalls)
 	}
-	if fg.prCalls != 0 {
-		t.Errorf("GetPullRequest calls = %d, want 0", fg.prCalls)
+	if fg.capturedSlug != "feature-pricing" || fg.capturedInputs.CommitSha != fetchedSHA {
+		t.Errorf("deployed to %q at %q, want feature-pricing at %q",
+			fg.capturedSlug, fg.capturedInputs.CommitSha, fetchedSHA)
+	}
+	if fg.teardownSlug != "" {
+		t.Errorf("teardown of %q, want none", fg.teardownSlug)
+	}
+}
+
+func TestReconcile_ClosedFallsBackToPayloadTeardown(t *testing.T) {
+	const msg = "chore(preview): delete feature-add-pricing preview"
+	cases := []struct {
+		name        string
+		set         func(*fakeGitops)
+		wantPRCalls int
+	}{
+		{name: "pull request read fails", set: func(f *fakeGitops) { f.prErr = errors.New("boom") }, wantPRCalls: 1},
+		{name: "catalog read fails", set: func(f *fakeGitops) { f.catalogErr = errors.New("boom") }, wantPRCalls: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fg := reconcileFake()
+			tc.set(fg)
+			fg.teardownResult = &gitops.TeardownResult{
+				Removed: []string{"backend-1"}, Deleted: true, CommitURL: teardownCommitURL, CommitMessage: msg,
+			}
+			s, capture := newTeardownServer(t, fg)
+			deliver(t, s, prEvent("closed", true))
+
+			if fg.prCalls != tc.wantPRCalls {
+				t.Errorf("GetPullRequest calls = %d, want %d", fg.prCalls, tc.wantPRCalls)
+			}
+			assertPayloadTeardown(t, fg, capture, msg)
+		})
+	}
+}
+
+// assertPayloadTeardown checks that fg tore down the closed event's payload
+// head branch with the PR closed reason, deployed nothing, and that the
+// fallback was logged.
+func assertPayloadTeardown(t *testing.T, fg *fakeGitops, capture *LogCapture, msg string) {
+	t.Helper()
+	if fg.teardownSlug != teardownSlug || fg.teardownOwner != "acme" ||
+		fg.teardownRepo != "backend-1" || fg.teardownNumber != 42 {
+		t.Errorf("teardown(%q, %q, %q, %d), want (%q, acme, backend-1, 42)",
+			fg.teardownSlug, fg.teardownOwner, fg.teardownRepo, fg.teardownNumber, teardownSlug)
+	}
+	wantComment := "## 🧹 Preview: `feature-add-pricing`\n\n" +
+		"Preview deleted (PR closed): no other PR is pinned.\n\n" +
+		"---\n" +
+		"🔗 [" + msg + "](" + teardownCommitURL + ")"
+	if len(fg.upserts) != 1 || fg.upserts[0].body != wantComment {
+		t.Errorf("upserts = %+v, want one with body:\n%s", fg.upserts, wantComment)
+	}
+	if fg.capturedSlug != "" {
+		t.Errorf("deploy to %q, want none", fg.capturedSlug)
+	}
+	r, attrs := teardownRecord(t, capture, "preview reconcile fell back to payload teardown")
+	if r.Level != slog.LevelWarn {
+		t.Errorf("level = %v, want WARN", r.Level)
+	}
+	if attrs["repo"].String() != "acme/backend-1" || attrs["pr_number"].Int64() != 42 ||
+		attrs["err"].String() != "boom" {
+		t.Errorf("attrs = %v", attrs)
 	}
 }
 
@@ -253,20 +315,27 @@ func TestReconcile_PanicRecovered(t *testing.T) {
 	}
 }
 
+// waitStarted waits for the next value sent on started and checks it is want.
+func waitStarted(t *testing.T, started chan string, want string) {
+	t.Helper()
+	select {
+	case got := <-started:
+		if got != want {
+			t.Fatalf("started = %q, want %q", got, want)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("%s never started", want)
+	}
+}
+
 func TestJobs_NeverOverlap(t *testing.T) {
-	fg := &fakeGitops{teardownGate: make(chan struct{}), started: make(chan string, 4)}
+	fg := &fakeGitops{teardownGate: make(chan struct{}), pr: closedPR(), started: make(chan string, 4)}
 	s, _ := newTeardownServer(t, fg)
 	s.handlePullRequest(context.Background(), prEvent("closed", true))
 	s.handlePullRequest(context.Background(), prEvent("closed", true))
 
-	select {
-	case got := <-fg.started:
-		if got != "teardown" {
-			t.Fatalf("started = %q, want teardown", got)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("no job started")
-	}
+	waitStarted(t, fg.started, "catalog")
+	waitStarted(t, fg.started, "teardown")
 	select {
 	case got := <-fg.started:
 		t.Fatalf("second job reached %q while the first held the gate", got)
@@ -277,7 +346,7 @@ func TestJobs_NeverOverlap(t *testing.T) {
 	if err := s.WaitBackground(context.Background()); err != nil {
 		t.Fatalf("WaitBackground: %v", err)
 	}
-	if got := drain(fg.started); len(got) != 1 || got[0] != "teardown" {
-		t.Errorf("after release started = %v, want [teardown]", got)
+	if got := drain(fg.started); len(got) != 2 || got[0] != "catalog" || got[1] != "teardown" {
+		t.Errorf("after release started = %v, want [catalog teardown]", got)
 	}
 }

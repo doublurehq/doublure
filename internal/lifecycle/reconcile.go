@@ -27,6 +27,9 @@ type Event struct {
 
 	// Action is the webhook action (opened, labeled, ...).
 	Action string
+	// HeadRef is the PR's head branch in the payload. Only the payload
+	// teardown of a closed PR uses it.
+	HeadRef string
 	// Label is the added or removed label, on labeled and unlabeled.
 	Label string
 	// Labels holds the names of the PR's labels in the payload.
@@ -39,32 +42,53 @@ type Event struct {
 // label, every catalog service of its repo is deployed at its head SHA; when
 // it is not, the PR is torn down. Fork PRs and repos outside the catalog are
 // skipped. Every outcome is logged.
+//
+// A closed event is not guarded by its payload nor skipped for a repo outside
+// the catalog, and a closed fork PR is still torn down. When the catalog or
+// the PR can't be read, it falls back to tearing down the payload's head
+// branch as closed.
 func ReconcilePR(ctx context.Context, api ReconcileAPI, ev Event) {
+	closed := ev.Action == "closed"
 	catalog, err := api.FetchServiceCatalog(ctx)
 	if err != nil {
+		if closed {
+			payloadTeardown(ctx, api, ev, err)
+			return
+		}
 		reconcileFailed(ctx, ev, err)
-		return
-	}
-	if reason := payloadSkipReason(ev, catalog.Label); reason != "" {
-		reconcileSkipped(ctx, ev, reason)
 		return
 	}
 	services := catalog.ServicesForRepo(ev.Owner, ev.Repo)
-	if len(services) == 0 {
-		reconcileSkipped(ctx, ev, "repo not in catalog")
-		return
+	if !closed {
+		if reason := payloadSkipReason(ev, catalog.Label); reason != "" {
+			reconcileSkipped(ctx, ev, reason)
+			return
+		}
+		if len(services) == 0 {
+			reconcileSkipped(ctx, ev, "repo not in catalog")
+			return
+		}
 	}
 	pr, err := api.GetPullRequest(ctx, ev.Owner, ev.Repo, ev.Number)
 	if err != nil {
+		if closed {
+			payloadTeardown(ctx, api, ev, err)
+			return
+		}
 		reconcileFailed(ctx, ev, err)
 		return
 	}
-	if !strings.EqualFold(pr.HeadFullName, pr.FullName) {
+
+	deploy := pr.Open && containsFold(pr.Labels, catalog.Label)
+	if (deploy || !closed) && !strings.EqualFold(pr.HeadFullName, pr.FullName) {
 		reconcileSkipped(ctx, ev, "fork pr")
 		return
 	}
-
-	if pr.Open && containsFold(pr.Labels, catalog.Label) {
+	if deploy {
+		if len(services) == 0 {
+			reconcileSkipped(ctx, ev, "repo not in catalog")
+			return
+		}
 		deployServices(ctx, api, catalog, services, ev, pr)
 		return
 	}
@@ -75,6 +99,19 @@ func ReconcilePR(ctx context.Context, api ReconcileAPI, ev Event) {
 	t := ev.Target
 	t.Slug = preview.Slugify(pr.HeadRef)
 	TeardownPR(ctx, api, t, reason)
+}
+
+// payloadTeardown tears down a closed PR from its payload alone, after err
+// prevented reading the catalog or the PR.
+func payloadTeardown(ctx context.Context, api TeardownAPI, ev Event, err error) {
+	slog.WarnContext(ctx, "preview reconcile fell back to payload teardown",
+		slog.String("repo", ev.FullName),
+		slog.Int("pr_number", ev.Number),
+		slog.String("err", err.Error()),
+	)
+	t := ev.Target
+	t.Slug = preview.Slugify(ev.HeadRef)
+	TeardownPR(ctx, api, t, PRClosedReason)
 }
 
 // payloadSkipReason returns why ev cannot concern label, or "" when the PR

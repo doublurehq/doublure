@@ -129,9 +129,7 @@ func (s *Server) handlePullRequest(ctx context.Context, e *gh.PullRequestEvent) 
 		slog.String("pr_author", e.GetPullRequest().GetUser().GetLogin()),
 	)
 	switch e.GetAction() {
-	case "closed":
-		s.startTeardown(ctx, e)
-	case "opened", "reopened", "synchronize", "labeled", "unlabeled":
+	case "opened", "reopened", "synchronize", "labeled", "unlabeled", "closed":
 		s.startReconcile(ctx, e)
 	}
 }
