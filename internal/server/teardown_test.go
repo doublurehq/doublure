@@ -300,3 +300,44 @@ func TestTeardown_PanicRecovered(t *testing.T) {
 		t.Errorf("panic = %q", got)
 	}
 }
+
+func TestTeardown_ClosedEmptyBranchSlugWithNamedLabel(t *testing.T) {
+	pr := fetchedPR(false, "preview:pricing")
+	pr.HeadRef = "---"
+	fg := &fakeGitops{servicesYAML: servicesWithPreview, pr: pr}
+	s, _ := newTeardownServer(t, fg)
+	ev := prEvent("closed", true)
+	ev.PullRequest.Head.Ref = gh.Ptr("---")
+	ev.PullRequest.Labels = []*gh.Label{{Name: gh.Ptr("preview:pricing")}}
+	s.handlePullRequest(context.Background(), ev)
+	if err := s.WaitBackground(context.Background()); err != nil {
+		t.Fatalf("WaitBackground: %v", err)
+	}
+
+	if fg.prCalls != 1 {
+		t.Errorf("GetPullRequest calls = %d, want 1", fg.prCalls)
+	}
+	if fg.teardownSlug != "pricing" || fg.teardownNumber != 42 {
+		t.Errorf("teardown(%q, #%d), want (pricing, #42)", fg.teardownSlug, fg.teardownNumber)
+	}
+}
+
+func TestTeardown_ClosedWithoutSlugSkipped(t *testing.T) {
+	fg := &fakeGitops{pr: closedPR()}
+	s, capture := newTeardownServer(t, fg)
+	ev := prEvent("closed", true)
+	ev.PullRequest.Head.Ref = gh.Ptr("---")
+	ev.PullRequest.Labels = []*gh.Label{{Name: gh.Ptr("preview")}, {Name: gh.Ptr("preview:---")}}
+	s.handlePullRequest(context.Background(), ev)
+	if err := s.WaitBackground(context.Background()); err != nil {
+		t.Fatalf("WaitBackground: %v", err)
+	}
+
+	_, attrs := teardownRecord(t, capture, "preview teardown skipped")
+	if got := attrs["reason"].String(); got != "no preview slug" {
+		t.Errorf("reason = %q, want 'no preview slug'", got)
+	}
+	if fg.prCalls != 0 {
+		t.Errorf("GetPullRequest calls = %d, want 0", fg.prCalls)
+	}
+}

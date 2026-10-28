@@ -14,7 +14,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
                                             └─ service chart (k8s/ in each service repo) at commitSha or main
 
  label removed or pull_request closed ──► doublure serve (async) ── unpins the PR's services, or deletes previews/<slug>/values.yaml ──► ArgoCD prunes
- doublure cleanup (CronJob) ── deletes stale previews/<slug>/, unpins closed PRs ──► ArgoCD prunes
+ doublure cleanup (CronJob) ── deletes stale previews/<slug>/, unpins closed PRs, and open PRs whose label moved, conflicts or is gone ──► ArgoCD prunes
 ```
 
 ## Components
@@ -22,7 +22,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
 | Component | Where | Notes |
 |---|---|---|
 | `doublure serve` | this repo | chi HTTP server: `/healthz`, `/v1/deploy`, `/webhooks/github` |
-| `doublure cleanup` | this repo | One-shot, CronJob (hourly). Per preview, the first matching rule: no pinned service → delete; `CLEANUP_TTL` set and no deploy within it → delete; otherwise tear down every closed PR's pins (see [Cleanup sweep](#cleanup-sweep)) |
+| `doublure cleanup` | this repo | One-shot, CronJob (hourly). Per preview, the first matching rule: no pinned service → delete; `CLEANUP_TTL` set and no deploy within it → delete; otherwise unpin closed PRs, and open PRs whose label moved, conflicts or is gone (see [Cleanup sweep](#cleanup-sweep)) |
 | `doublure bootstrap-app` / `verify-app` | this repo | Create a GitHub App via the manifest flow / check credentials |
 | `preview-env` chart | this repo, [`charts/preview-env`](../charts/preview-env) | Renders AppProject, Namespace, one ArgoCD Application per service; Application annotations `preview.doublure.dev/*` carry the PR metadata |
 | ApplicationSet | this repo, [`examples/argocd`](../examples/argocd) | Git directory generator on `previews/*` |
@@ -53,7 +53,7 @@ preview:                        # optional: preview label and per-preview URLs (
 
 `services.yaml` is a value file of the `preview-env` chart and is read by doublure on every deploy. A malformed `preview` block fails `/v1/deploy` and makes every reconcile log `preview reconcile failed`, with an error naming the offending key. An `expose` entry for a service missing from `serviceRepos` is ignored.
 
-- `preview.label` must be a non-empty string; it is matched case-insensitively, like GitHub label names.
+- `preview.label` must be a non-empty string; it is matched case-insensitively, like GitHub label names. `<label>:<name>` labels name the preview (see the label flow below).
 - Every `serviceRepos` value must be a string. A PR's repo maps to the services whose URL is `https://github.com/<owner>/<repo>`, compared case-insensitively, with or without a trailing `/` or `.git`. Other URL forms (SSH, GitHub Enterprise) never match, so the label flow never deploys those services.
 
 ```yaml
@@ -145,23 +145,64 @@ POST /webhooks/github
 
 Manual deploy flow (`/v1/deploy`): validate `service` against `services.yaml` → slugify `head_ref` → read or bootstrap `previews/<slug>/values.yaml` → write with SHA optimistic locking + 409 retry → PR comment fan-out (best-effort, failures returned as `warnings`).
 
-Label flow: CI only builds and pushes images; the `preview` label (`preview.label`) on a PR decides whether it has a preview. doublure answers `opened`, `reopened`, `synchronize`, `labeled`, `unlabeled` and `closed` deliveries 200 at once and reconciles the PR in the background:
+Label flow: CI only builds and pushes images; the `preview` label (`preview.label`) on a PR decides whether it has a preview, and in which one. doublure answers `opened`, `reopened`, `synchronize`, `labeled`, `unlabeled` and `closed` deliveries 200 at once and reconciles the PR in the background:
 
-1. A `labeled` or `unlabeled` delivery for another label, or an `opened`, `reopened` or `synchronize` delivery whose payload lacks the label, is skipped without calling GitHub.
+1. A `labeled` or `unlabeled` delivery for another label, or an `opened`, `reopened` or `synchronize` delivery whose payload lacks a preview label, is skipped without calling GitHub. The preview labels are the plain label and the named labels below with a non-empty slug.
 2. A repo not in the catalog is skipped with a log. Neither step applies to `closed`.
 3. Otherwise doublure re-reads the PR from GitHub and acts on its current state, labels and head SHA, never the payload's, so late or out-of-order deliveries, `closed` included, converge on the current truth: a `closed` delivery running after the PR was reopened and labeled deploys it. Fork PRs (head repo different from the base repo) are skipped: CI can't push a fork's image; a closed fork PR is still torn down.
-4. An open PR carrying the label deploys every catalog service of its repo, in catalog order, at the PR's head SHA, through the manual flow's write and comment fan-out. A failed service is logged and the next one still deploys.
-5. Otherwise (closed, or label removed) the PR is torn down, as in the teardown flow below.
+4. The PR's labels resolve its target preview (see Target preview below).
+5. The PR is torn down from every other preview it may still be pinned in (the cleanup set below), before anything is deployed.
+6. An open PR with a target deploys every catalog service of its repo, in catalog order, at the PR's head SHA, to the target slug, through the manual flow's write and comment fan-out, unless another PR holds one of its services there (see One PR per service below). A failed service is logged and the next one still deploys. The deploy fan-out is the last write to the PR's comment, so a PR that moved shows its new preview.
+7. An open PR with conflicting named labels gets no preview. Its comment is replaced last by:
+
+   ```
+   ## ⚠️ Preview: conflicting labels
+
+   Keep one `preview:` label. This PR has `preview:a`, `preview:b`.
+   ```
+
+Target preview: a label is **named** when it starts with `<label>:` (case-insensitively, for example `preview:pricing` or `Preview:Pricing`). Its name is the rest, trimmed of spaces, and its slug is the slugified name. A named label whose slug is empty (`preview:`, `preview:--`) is ignored and logged (`preview label ignored`). The **plain** label is `<label>` itself. `preview-x` and `previewx:y` are neither.
+
+- Exactly one distinct named slug: the target is that slug. A named label wins over the plain label. Two named labels with the same slug count as one.
+- Two or more distinct named slugs: a conflict, with no target.
+- No valid named label, and the plain label: the target is the slugified head branch.
+- Otherwise: no target.
+
+Several PRs, from different repos and branches, labeled `preview:pricing` share the preview `pricing`: each pins its own services, and the rest run at `main`. A named preview and a branch preview with the same slug are the same preview: `preview:main` joins the preview of a branch called `main`. doublure never creates labels: labels are per repo, so `preview:<name>` must be created in each repo.
+
+The **cleanup set** of a reconcile is, deduplicated, without empty slugs, and without the target when the PR is deployed there: the slugified head branch, every named slug, and, on `unlabeled`, the removed label's slug (the head branch's for the plain label). Each is torn down with one reason, the first that applies:
+
+1. `PR closed`, when the PR is closed;
+2. ``label `<removed label>` removed``, on `unlabeled`;
+3. ``conflicting `<label>:` labels``, on a conflict;
+4. ``moved to preview `<target>` ``, when the PR is deployed elsewhere;
+5. ``label `<label>` removed`` otherwise.
+
+A slug where the PR has no pin costs one read and is otherwise a no-op, with no comment.
+
+A renamed or deleted label triggers nothing until the PR's next event or the next sweep, which unpins without redeploying. In that missed-event case the PR's comment can stay stale until its next event.
+
+One PR per service: a preview holds one PR per service. Before deploying, a reconcile reads the target's `values.yaml` (a missing file means no holder). An entry for one of the PR's services is held when it is pinned (`commitSha` set), has metadata, and its `pr-url` names another PR. Any held entry refuses the whole PR, for every target, branch or named, since two PRs can also share a head branch. The first held service is reported in the PR's comment:
+
+```
+## ⚠️ Preview: `<slug>`
+
+`<service>` is already pinned in this preview by <holder PR URL>. Once that pull request leaves this preview, push to this pull request or re-add its label. If that pull request is closed, or now carries a different `<label>:` label, it is released within the next cleanup run.
+```
+
+and the reconcile logs `preview reconcile skipped` with reason `service held by another pr` and a `holder` attribute. A read error other than 404 logs `preview reconcile failed` and deploys nothing. The holder PR is never read: a holder left by a missed event is released by the sweeper. A refused PR is not retried when the holder leaves, and since the cleanup runs first, it has already left its previous preview, as its labels ask.
+
+The check assumes `replicaCount: 1` (`charts/doublure/values.yaml`): reconciles are serialized within the replica, so no other reconcile writes between the read and the write. `/v1/deploy` runs outside that queue and skips the check: it stays last-writer-wins and can overwrite a holder's pin.
 
 doublure does not check the registry: an image not pushed yet leaves the pod in `ImagePullBackOff` until CI pushes it (kubelet back-off capped at 300s).
 
-Background reconciles run one at a time, in no guaranteed order; a reconcile reads the PR only once it runs. A reconcile has a 20s budget, counted from when it starts running and shared by its services or its teardown; a service not reached in time is logged as failed. Shutdown waits up to 25s for queued and running jobs; jobs still queued then are dropped, and the cleanup sweeper catches missed teardowns of closed PRs.
+Background reconciles run one at a time, in no guaranteed order; a reconcile reads the PR only once it runs. A reconcile has a 20s budget, counted from when it starts running and shared by its cleanup teardowns, the holder check, then its services; a service not reached in time is logged as failed. Shutdown waits up to 25s for queued and running jobs; jobs still queued then are dropped, and the cleanup sweeper catches missed teardowns of closed PRs.
 
-A labeled PR with no push for longer than `CLEANUP_TTL` is expired by the sweeper and not recreated while the label stays: push, or remove and re-add the label, to recreate it. The sweeper only unpins closed PRs, so a missed `unlabeled` delivery leaves the pins until the PR closes or the TTL expires.
+A labeled PR with no push for longer than `CLEANUP_TTL` is expired by the sweeper and not recreated while the label stays: push, or remove and re-add the label, to recreate it. A missed `unlabeled` of a named label, or a label that moved, is unpinned by the sweeper; a missed `unlabeled` of the plain label at the branch slug still waits for close or TTL.
 
-Teardown flow: a reconcile that finds the PR closed (merged or not) or without the label (for example after `unlabeled`) tears it down. A `closed` delivery whose reconcile can't read the catalog or the PR falls back to tearing down the payload's head branch as closed, logged as a warning, so a close still tears down when GitHub reads fail. doublure slugifies the PR's head branch, reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The PR's comment is edited (or created) to say what was removed and why: `PR closed`, or ``label `<label>` removed``.
+Teardown flow: a reconcile tears the PR down from each slug of its cleanup set: the PR is closed (merged or not), lost its label (for example after `unlabeled`), has conflicting labels, or moved to another preview. A `closed` delivery whose reconcile can't read the catalog or the PR falls back to tearing down, as closed, the payload's head branch and the payload's named labels, logged as a warning, so a close still tears down when GitHub reads fail. For each slug (the slugified head branch or named label), doublure reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The PR's comment is edited (or created) to say what was removed and why: `PR closed`, ``label `<label>` removed``, ``label `<label>:<name>` removed``, ``conflicting `<label>:` labels`` or ``moved to preview `<slug>` ``.
 
-Deleting the file drops `previews/<slug>/` from the git directory generator, and the ApplicationSet deletes the preview's Application and its resources. This requires the ApplicationSet controller policy `sync` (the default) or `create-delete`; with `create-only` or `create-update` a deleted preview keeps running. Previews whose branch was renamed after the deploy, closes missed while doublure was down, and pins written by a deploy after the PR closed are caught by the cleanup sweeper.
+Deleting the file drops `previews/<slug>/` from the git directory generator, and the ApplicationSet deletes the preview's Application and its resources. This requires the ApplicationSet controller policy `sync` (the default) or `create-delete`; with `create-only` or `create-update` a deleted preview keeps running. Closes missed while doublure was down, and pins written by a deploy after the PR closed, are caught by the cleanup sweeper. A labeled PR whose branch was renamed after the deploy is unpinned from its old slug by the sweeper, without a comment; push to redeploy it at the new slug.
 
 ## Cleanup sweep
 
@@ -169,7 +210,13 @@ Deleting the file drops `previews/<slug>/` from the git directory generator, and
 
 1. **No pinned service**: the file is deleted (`chore(preview): delete <slug> preview`). No comment.
 2. **Expired** (only when `CLEANUP_TTL` is set): the newest `updated-at` of the pinned services is older than `CLEANUP_TTL`. The file is deleted (`chore(preview): expire <slug> preview`) and its open PRs get a comment saying the preview expired. A pinned service without a parseable `updated-at` never counts, so such a preview never expires.
-3. **Closed PRs**: every distinct PR pinning a service is looked up on GitHub. Each closed (or merged) PR goes through the same teardown as a `pull_request` `closed` delivery: unpin, update or delete, comments. A PR whose state can't be read (404, 403, any error) keeps its pins and is logged as a warning.
+3. **Closed or moved PRs**: every distinct PR pinning a service is looked up on GitHub. A PR whose state can't be read (404, 403, any error) keeps its pins and is logged as a warning.
+   - A closed (or merged) PR goes through the same teardown as a `pull_request` `closed` delivery: unpin, update or delete, comments.
+   - An open PR's labels are resolved to its target preview (see the label flow). It is unpinned from this preview, in this order, when its labels conflict (``conflicting `<label>:` labels``), or target another preview (``moved to preview `<target>` ``): both without touching its comment, which shows where it lives now. When it has no target and this preview is not its branch slug, it goes through the teardown, and its comment says ``label `<label>` removed``. Any other open PR is left alone, including an unlabeled PR pinned at its branch slug.
+
+   This catches missed `unlabeled` deliveries, conflicts, and renamed or deleted labels. The catalog is read once per sweep for the label; when it can't be read, `cleanup catalog unavailable` is logged as a warning, it is not counted as a failure, and only closed PRs are torn down.
+
+   This changes manual deploys: a `/v1/deploy` pin now survives the sweep only at the PR's target preview (its single `<label>:<name>` slug, or its branch slug when it has only the plain label), or at its branch slug when the PR has no target. Anywhere else it is unpinned (``moved to preview `<target>` `` or ``label `<label>` removed``); a PR carrying `<label>:a` loses a pin at its branch slug. A PR with conflicting named labels is unpinned from every preview (``conflicting `<label>:` labels``). A webhook reconcile of the PR also unpins it from its branch slug and its named-label slugs other than its target (`cleanupSlugs`). Such pins used to be left alone.
 
 Rules 1 and 2 re-check their condition on the freshly read file, and again after every 409, so a deploy landing during the sweep cancels the delete. A failing preview read or rule 1–2 delete is logged and the sweep goes on; the command then exits 1 and the Job fails without retrying (`backoffLimit: 0`). A failing closed-PR teardown is only logged. The next scheduled run retries both. Comment fan-outs (deploy, teardown, expiry) skip closed PRs, so a closed PR keeps its teardown comment.
 

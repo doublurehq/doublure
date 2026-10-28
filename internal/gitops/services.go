@@ -26,8 +26,8 @@ type ServiceCatalog struct {
 	Repos map[string]string
 }
 
-// defaultLabel is the preview label when preview.label is absent.
-const defaultLabel = "preview"
+// DefaultLabel is the preview label when preview.label is absent.
+const DefaultLabel = "preview"
 
 // ServicesForRepo returns, in catalog order, the services whose git URL is
 // https://github.com/<owner>/<repo>, compared lowercased and with a trailing
@@ -159,7 +159,7 @@ func ParseServices(raw []byte) (*ServiceCatalog, error) {
 	if err != nil {
 		return nil, fmt.Errorf("services.yaml: %w", err)
 	}
-	label := defaultLabel
+	label := DefaultLabel
 	if doc.Preview != nil && doc.Preview.Label != nil {
 		label = string(*doc.Preview.Label)
 	}

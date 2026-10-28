@@ -264,3 +264,24 @@ func TestBuildExpirySummary(t *testing.T) {
 		t.Errorf("summary mismatch\n got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestBuildLabelConflictSummary(t *testing.T) {
+	got := preview.BuildLabelConflictSummary("preview", []string{"preview:a", "Preview:B"})
+	want := "## ⚠️ Preview: conflicting labels\n\n" +
+		"Keep one `preview:` label. This PR has `preview:a`, `Preview:B`."
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestBuildServiceHeldSummary(t *testing.T) {
+	got := preview.BuildServiceHeldSummary("pricing", "front", "https://github.com/acme/front/pull/7", "preview")
+	want := "## ⚠️ Preview: `pricing`\n\n" +
+		"`front` is already pinned in this preview by https://github.com/acme/front/pull/7. " +
+		"Once that pull request leaves this preview, push to this pull request or re-add its label. " +
+		"If that pull request is closed, or now carries a different `preview:` label, " +
+		"it is released within the next cleanup run."
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}

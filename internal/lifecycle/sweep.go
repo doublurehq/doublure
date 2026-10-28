@@ -31,8 +31,15 @@ type SweepAPI interface {
 //  1. no pinned entry: the preview is deleted;
 //  2. ttl > 0 and the newest updated-at of its pinned entries is before
 //     now - ttl: the preview is deleted and its open PRs are told it expired;
-//  3. otherwise every distinct PR pinning an entry is looked up, and each
-//     closed one goes through TeardownPR.
+//  3. otherwise every distinct PR pinning an entry is looked up. A closed one
+//     goes through TeardownPR. An open one whose labels (preview.ResolveTarget)
+//     conflict, or target another preview, is unpinned without a comment
+//     (unpinOnly); one with no target, pinned outside its branch slug, goes
+//     through TeardownPR. Other open PRs are left alone.
+//
+// The catalog is fetched once, when there is a preview, for the preview label.
+// When it can't be read, a warning is logged and only closed PRs are torn down
+// by rule 3.
 //
 // A ttl of 0 disables rule 2. A failing preview read or rule 1-2 delete is
 // logged and counted, and the sweep goes on; Sweep then returns an error
@@ -48,9 +55,10 @@ func Sweep(ctx context.Context, api SweepAPI, now time.Time, ttl time.Duration) 
 		slog.Int("previews", len(slugs)),
 		slog.String("ttl", ttl.String()),
 	)
+	label := sweepLabel(ctx, api, slugs)
 	failed := 0
 	for _, slug := range slugs {
-		if sweepErr := sweepPreview(ctx, api, slug, now, ttl); sweepErr != nil {
+		if sweepErr := sweepPreview(ctx, api, slug, label, now, ttl); sweepErr != nil {
 			failed++
 			slog.ErrorContext(ctx, "cleanup preview failed",
 				slog.String("slug", slug),
@@ -68,9 +76,30 @@ func Sweep(ctx context.Context, api SweepAPI, now time.Time, ttl time.Duration) 
 	return nil
 }
 
+// sweepLabel returns the catalog's preview label, or "" when there is no
+// preview or the catalog can't be read.
+func sweepLabel(ctx context.Context, api SweepAPI, slugs []string) string {
+	if len(slugs) == 0 {
+		return ""
+	}
+	catalog, err := api.FetchServiceCatalog(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "cleanup catalog unavailable", slog.String("err", err.Error()))
+		return ""
+	}
+	return catalog.Label
+}
+
 // sweepPreview applies the first matching sweep rule to one preview. A
-// preview that vanished since the listing is skipped.
-func sweepPreview(ctx context.Context, api SweepAPI, slug string, now time.Time, ttl time.Duration) error {
+// preview that vanished since the listing is skipped. label is the preview
+// label, "" to skip rule 3's open-PR cases.
+func sweepPreview(
+	ctx context.Context,
+	api SweepAPI,
+	slug, label string,
+	now time.Time,
+	ttl time.Duration,
+) error {
 	vals, _, err := api.GetPreview(ctx, slug)
 	if errors.Is(err, gitops.ErrNotFound) {
 		return nil
@@ -88,7 +117,7 @@ func sweepPreview(ctx context.Context, api SweepAPI, slug string, now time.Time,
 			return deleteExpired(ctx, api, slug, ttl, cutoff)
 		}
 	}
-	teardownClosedPRs(ctx, api, slug, *vals)
+	teardownClosedPRs(ctx, api, slug, label, *vals)
 	return nil
 }
 
@@ -161,9 +190,10 @@ func deleteExpired(ctx context.Context, api SweepAPI, slug string, ttl time.Dura
 }
 
 // teardownClosedPRs looks up every distinct PR pinning an entry of vals, in
-// file order, and tears down each closed one (rule 3). A PR whose state cannot
-// be read keeps its pins.
-func teardownClosedPRs(ctx context.Context, api SweepAPI, slug string, vals preview.PreviewValues) {
+// file order, tears down each closed one and, when label is set, unpins each
+// open one whose labels no longer target slug (rule 3). A PR whose state
+// cannot be read keeps its pins.
+func teardownClosedPRs(ctx context.Context, api SweepAPI, slug, label string, vals preview.PreviewValues) {
 	for _, t := range pinnedPRs(slug, vals) {
 		pr, err := api.GetPullRequest(ctx, t.Owner, t.Repo, t.Number)
 		if err != nil {
@@ -177,7 +207,28 @@ func teardownClosedPRs(ctx context.Context, api SweepAPI, slug string, vals prev
 		}
 		if !pr.Open {
 			TeardownPR(ctx, api, t, PRClosedReason)
+			continue
 		}
+		unpinMoved(ctx, api, t, pr, label)
+	}
+}
+
+// unpinMoved unpins the open pr from t.Slug when its labels conflict, target
+// another preview, or target none while t.Slug is not its branch slug. A
+// conflict or a move leaves the PR's comment alone. It does nothing when label
+// is "".
+func unpinMoved(ctx context.Context, api TeardownAPI, t Target, pr *gitops.PullRequest, label string) {
+	if label == "" {
+		return
+	}
+	r := preview.ResolveTarget(pr.Labels, pr.HeadRef, label)
+	switch {
+	case r.Conflict:
+		unpinOnly(ctx, api, t, conflictReason(label))
+	case r.Slug != "" && r.Slug != t.Slug:
+		unpinOnly(ctx, api, t, movedReason(r.Slug))
+	case r.Slug == "" && t.Slug != preview.Slugify(pr.HeadRef):
+		TeardownPR(ctx, api, t, labelRemovedReason(label))
 	}
 }
 

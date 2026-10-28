@@ -21,8 +21,8 @@ type DeployAPI interface {
 	FanOutPRComments(ctx context.Context, vals preview.PreviewValues, body string) error
 }
 
-// DeployPR pins inputs.ServiceName at inputs.CommitSha in the preview of
-// inputs.HeadRef, then posts the preview summary on every open PR of the
+// DeployPR pins inputs.ServiceName at inputs.CommitSha in the preview slug,
+// then posts the preview summary on every open PR of the
 // preview. It returns the write result, the fan-out error (possibly joined,
 // nil when every comment landed) and the write error; on a write error
 // nothing is commented. It does not log.
@@ -30,9 +30,9 @@ func DeployPR(
 	ctx context.Context,
 	api DeployAPI,
 	catalog *gitops.ServiceCatalog,
+	slug string,
 	inputs preview.DeployInputs,
 ) (*gitops.WriteResult, error, error) {
-	slug := preview.Slugify(inputs.HeadRef)
 	createMsg := fmt.Sprintf("chore(preview): create %s preview", slug)
 	updateMsg := fmt.Sprintf("chore(preview): update %s in %s", inputs.ServiceName, slug)
 
