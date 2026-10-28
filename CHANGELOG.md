@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/doublurehq/doublure/compare/v0.8.1...v0.9.0) (2026-10-28)
+
+
+### Features
+
+* **cli:** create the github app with a given webhook url ([#38](https://github.com/doublurehq/doublure/issues/38)) ([06f6856](https://github.com/doublurehq/doublure/commit/06f685673656ce5a1909125ff9ed1e4f67f414c3))
+
 ## [0.8.1](https://github.com/doublurehq/doublure/compare/v0.8.0...v0.8.1) (2026-10-28)
 
 
