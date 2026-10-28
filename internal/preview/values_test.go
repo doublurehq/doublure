@@ -1,9 +1,12 @@
 package preview_test
 
 import (
+	"bytes"
 	"slices"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/doublurehq/doublure/internal/preview"
 )
@@ -323,5 +326,121 @@ func TestLastDeploy(t *testing.T) {
 				t.Errorf("LastDeploy = %s, want %s", s, tc.want)
 			}
 		})
+	}
+}
+
+func hostURLs() preview.URLConfig {
+	return preview.URLConfig{
+		Domain: "127.0.0.1.nip.io",
+		Expose: map[string]string{"front": "/", "backend-1": "/docs"},
+	}
+}
+
+func TestApplyHosts(t *testing.T) {
+	in := preview.PreviewValues{Services: []preview.ServiceEntry{
+		{Name: "backend-1", CommitSha: "abc"},
+		{Name: "backend-2", Host: "stale.example.com"},
+		{Name: "front"},
+	}}
+
+	got := preview.ApplyHosts(in, "feature-pricing", hostURLs())
+
+	want := []string{
+		"backend-1-feature-pricing.127.0.0.1.nip.io",
+		"",
+		"front-feature-pricing.127.0.0.1.nip.io",
+	}
+	if len(got.Services) != len(want) {
+		t.Fatalf("len(Services) = %d, want %d", len(got.Services), len(want))
+	}
+	for i, svc := range got.Services {
+		if svc.Host != want[i] {
+			t.Errorf("Services[%d].Host = %q, want %q", i, svc.Host, want[i])
+		}
+	}
+	if got.Services[0].CommitSha != "abc" {
+		t.Errorf("Services[0].CommitSha = %q, want abc (kept)", got.Services[0].CommitSha)
+	}
+}
+
+func TestApplyHosts_FeatureOff(t *testing.T) {
+	in := preview.PreviewValues{Services: []preview.ServiceEntry{
+		{Name: "backend-1", Host: "backend-1-feature-pricing.127.0.0.1.nip.io"},
+		{Name: "front"},
+	}}
+	urls := hostURLs()
+	urls.Domain = ""
+
+	got := preview.ApplyHosts(in, "feature-pricing", urls)
+
+	for i, svc := range got.Services {
+		if svc.Host != "" {
+			t.Errorf("Services[%d].Host = %q, want empty with the feature off", i, svc.Host)
+		}
+	}
+}
+
+func TestApplyHosts_DoesNotMutateInput(t *testing.T) {
+	in := preview.PreviewValues{Services: []preview.ServiceEntry{
+		{Name: "backend-2", Host: "stale.example.com"},
+		{Name: "front"},
+	}}
+
+	got := preview.ApplyHosts(in, "feature-pricing", hostURLs())
+
+	if got.Services[1].Host == "" {
+		t.Fatalf("ApplyHosts did not set the front host: %+v", got)
+	}
+	if in.Services[0].Host != "stale.example.com" || in.Services[1].Host != "" {
+		t.Errorf("input mutated: %+v", in.Services)
+	}
+}
+
+func TestUnpinPR_KeepsHost(t *testing.T) {
+	const host = "backend-1-feature-pricing.127.0.0.1.nip.io"
+	entry := pinned("backend-1", "abc", "https://github.com/acme/backend-1/pull/42")
+	entry.Host = host
+	in := preview.PreviewValues{Services: []preview.ServiceEntry{entry}}
+
+	got, removed, _ := preview.UnpinPR(in, "acme", "backend-1", 42)
+
+	if len(removed) != 1 {
+		t.Fatalf("removed = %v, want [backend-1]", removed)
+	}
+	if got.Services[0].Host != host {
+		t.Errorf("Host = %q, want %q (kept by unpin)", got.Services[0].Host, host)
+	}
+}
+
+func TestApplyHosts_YAML(t *testing.T) {
+	in := preview.PreviewValues{Services: []preview.ServiceEntry{
+		{Name: "backend-1", CommitSha: "abc", Metadata: &preview.Metadata{PRAuthor: "octocat"}},
+		{Name: "backend-2"},
+	}}
+	vals := preview.ApplyHosts(in, "feature-pricing", hostURLs())
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(vals); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	_ = enc.Close()
+
+	want := "services:\n" +
+		"  - name: backend-1\n" +
+		"    commitSha: abc\n" +
+		"    host: backend-1-feature-pricing.127.0.0.1.nip.io\n" +
+		"    metadata:\n" +
+		"      pr-author: octocat\n" +
+		"      pr-url: \"\"\n" +
+		"      pr-number: \"\"\n" +
+		"      created-at: \"\"\n" +
+		"      updated-at: \"\"\n" +
+		"      vcs.ref.name: \"\"\n" +
+		"      cicd.pipeline.run.url: \"\"\n" +
+		"  - name: backend-2\n"
+	if got := buf.String(); got != want {
+		t.Errorf("yaml mismatch\n got:\n%s\nwant:\n%s", got, want)
 	}
 }

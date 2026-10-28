@@ -19,8 +19,10 @@ func (c URLConfig) Enabled() bool {
 }
 
 // Host returns the per-preview host of service: <service>-<slug>.<domain>.
+// A <service>-<slug> label longer than 63 characters (the DNS label limit) is
+// cut and suffixed with a short hash of the full label.
 func (c URLConfig) Host(service, slug string) string {
-	return service + "-" + slug + "." + c.Domain
+	return capLabel(service+"-"+slug, maxLabelLen) + "." + c.Domain
 }
 
 // Link returns the Markdown-safe link text (<host><path>) and URL
