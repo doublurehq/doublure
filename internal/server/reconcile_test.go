@@ -350,3 +350,57 @@ func TestJobs_NeverOverlap(t *testing.T) {
 		t.Errorf("after release started = %v, want [catalog teardown]", got)
 	}
 }
+
+func TestJobs_PanicReleasesLock(t *testing.T) {
+	s, _ := newTeardownServer(t, &fakeGitops{})
+	ctx := context.Background()
+
+	started := make(chan struct{})
+	panicked := make(chan any, 1)
+	s.runJob(ctx, func(rec any) { panicked <- rec }, func(context.Context) {
+		close(started)
+		panic("job 1 panic")
+	})
+	<-started
+	done := make(chan struct{})
+	s.runJob(ctx, func(any) {}, func(context.Context) { close(done) })
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("job 2 never ran: the panicking job kept the lock")
+	}
+	if err := s.WaitBackground(ctx); err != nil {
+		t.Fatalf("WaitBackground: %v", err)
+	}
+	if rec := <-panicked; rec != "job 1 panic" {
+		t.Errorf("panic = %v, want job 1 panic", rec)
+	}
+}
+
+func TestJobs_TimeoutStartsAfterLock(t *testing.T) {
+	const timeout = 200 * time.Millisecond
+	fg := reconcileFake()
+	s, _ := newTeardownServer(t, fg)
+	s.jobTimeout = timeout
+	ctx := context.Background()
+
+	started := make(chan struct{})
+	gate := make(chan struct{})
+	s.runJob(ctx, func(any) {}, func(context.Context) {
+		close(started)
+		<-gate
+	})
+	<-started
+	s.handlePullRequest(ctx, labelEvent("labeled", "preview", "preview"))
+	time.Sleep(3 * timeout)
+	close(gate)
+	if err := s.WaitBackground(ctx); err != nil {
+		t.Fatalf("WaitBackground: %v", err)
+	}
+
+	if fg.capturedSlug != "feature-pricing" || fg.capturedInputs.CommitSha != fetchedSHA {
+		t.Errorf("deployed to %q at %q, want feature-pricing at %q: job 2's timeout ran while it waited for the lock",
+			fg.capturedSlug, fg.capturedInputs.CommitSha, fetchedSHA)
+	}
+}
