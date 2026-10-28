@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/doublurehq/doublure/compare/v0.6.0...v0.7.0) (2026-10-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* create previews from a pull request label ([#31](https://github.com/doublurehq/doublure/issues/31))
+
+### Features
+
+* create previews from a pull request label ([#31](https://github.com/doublurehq/doublure/issues/31)) ([3062e7b](https://github.com/doublurehq/doublure/commit/3062e7ba11ecf126d11d96984a416ab5653b3f8b))
+
 ## [0.6.0](https://github.com/doublurehq/doublure/compare/v0.5.0...v0.6.0) (2026-10-27)
 
 
