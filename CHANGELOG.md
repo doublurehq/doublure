@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/doublurehq/doublure/compare/v0.7.0...v0.8.0) (2026-10-28)
+
+
+### Features
+
+* share a preview across pull requests with named labels ([#34](https://github.com/doublurehq/doublure/issues/34)) ([aa1d3df](https://github.com/doublurehq/doublure/commit/aa1d3dfba31407c1e8e5362d7f5a4f23775ae01e))
+
 ## [0.7.0](https://github.com/doublurehq/doublure/compare/v0.6.0...v0.7.0) (2026-10-28)
 
 
