@@ -17,7 +17,7 @@ type SweepAPI interface {
 	TeardownAPI
 	ListPreviews(ctx context.Context) ([]string, error)
 	GetPreview(ctx context.Context, slug string) (*preview.PreviewValues, string, error)
-	PullRequestOpen(ctx context.Context, owner, repo string, number int) (bool, error)
+	GetPullRequest(ctx context.Context, owner, repo string, number int) (*gitops.PullRequest, error)
 	DeletePreviewWithRetry(
 		ctx context.Context,
 		slug, message string,
@@ -165,7 +165,7 @@ func deleteExpired(ctx context.Context, api SweepAPI, slug string, ttl time.Dura
 // be read keeps its pins.
 func teardownClosedPRs(ctx context.Context, api SweepAPI, slug string, vals preview.PreviewValues) {
 	for _, t := range pinnedPRs(slug, vals) {
-		prOpen, err := api.PullRequestOpen(ctx, t.Owner, t.Repo, t.Number)
+		pr, err := api.GetPullRequest(ctx, t.Owner, t.Repo, t.Number)
 		if err != nil {
 			slog.WarnContext(ctx, "cleanup pr state unknown",
 				slog.String("slug", slug),
@@ -175,7 +175,7 @@ func teardownClosedPRs(ctx context.Context, api SweepAPI, slug string, vals prev
 			)
 			continue
 		}
-		if !prOpen {
+		if !pr.Open {
 			TeardownPR(ctx, api, t)
 		}
 	}

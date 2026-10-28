@@ -104,15 +104,46 @@ func (c *Client) ListPreviews(ctx context.Context) ([]string, error) {
 	return slugs, nil
 }
 
-// PullRequestOpen reports whether owner/repo#number is open. A merged PR is
-// closed. Lookup failures (including 404 and 403) are returned as errors and
-// never reported as closed.
-func (c *Client) PullRequestOpen(ctx context.Context, owner, repo string, number int) (bool, error) {
+// PullRequest is the state of a pull request as read from GitHub.
+type PullRequest struct {
+	// Open is true when the state is open; a merged PR is closed.
+	Open    bool
+	HeadRef string
+	HeadSHA string
+	// Author is the PR author's login.
+	Author string
+	// URL is the PR's html_url.
+	URL string
+	// Labels holds the names of the PR's labels.
+	Labels []string
+	// FullName is the base repository's owner/repo.
+	FullName string
+	// HeadFullName is the head repository's owner/repo; it differs from
+	// FullName on a fork PR.
+	HeadFullName string
+}
+
+// GetPullRequest reads owner/repo#number. Lookup failures (including 404 and
+// 403) are returned as errors.
+func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, number int) (*PullRequest, error) {
 	pr, resp, err := c.gh.PullRequests.Get(ctx, owner, repo, number)
 	if err != nil {
-		return false, classifyHTTPError(resp, err)
+		return nil, classifyHTTPError(resp, err)
 	}
-	return pr.GetState() == "open", nil
+	labels := make([]string, 0, len(pr.Labels))
+	for _, l := range pr.Labels {
+		labels = append(labels, l.GetName())
+	}
+	return &PullRequest{
+		Open:         pr.GetState() == "open",
+		HeadRef:      pr.GetHead().GetRef(),
+		HeadSHA:      pr.GetHead().GetSHA(),
+		Author:       pr.GetUser().GetLogin(),
+		URL:          pr.GetHTMLURL(),
+		Labels:       labels,
+		FullName:     pr.GetBase().GetRepo().GetFullName(),
+		HeadFullName: pr.GetHead().GetRepo().GetFullName(),
+	}, nil
 }
 
 // previewPath returns the gitops repo path for a preview slug's values file.
@@ -405,13 +436,13 @@ func (c *Client) FanOutPRComments(ctx context.Context, vals preview.PreviewValue
 			errs = append(errs, fmt.Errorf("service %s: unrecognized pr-url %q", svc.Name, prURL))
 			continue
 		}
-		prOpen, stateErr := c.PullRequestOpen(ctx, owner, repo, prNumber)
+		pr, stateErr := c.GetPullRequest(ctx, owner, repo, prNumber)
 		if stateErr != nil {
 			errs = append(errs,
 				fmt.Errorf("service %s (%s/%s#%d): pr state: %w", svc.Name, owner, repo, prNumber, stateErr))
 			continue
 		}
-		if !prOpen {
+		if !pr.Open {
 			continue
 		}
 		if upsertErr := c.UpsertPRComment(ctx, owner, repo, prNumber, body); upsertErr != nil {
