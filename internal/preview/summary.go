@@ -22,7 +22,7 @@ func deriveCommitURL(prURL, sha string) string {
 // BuildSummary renders the markdown summary that doublure posts back as a PR
 // comment. Each service line shows the pinned commit (with a link if
 // derivable) or a 🔄 main badge for main-tracking entries, followed by a link
-// to the service's preview host when urls exposes it. The trailing line links
+// to the entry's written host, if any. The trailing line links
 // to the gitops commit that recorded the change.
 func BuildSummary(slug string, values PreviewValues, urls URLConfig, commitMessage, commitURL string) string {
 	var b strings.Builder
@@ -51,7 +51,7 @@ func BuildSummary(slug string, values PreviewValues, urls URLConfig, commitMessa
 		} else {
 			fmt.Fprintf(&b, "- **%s** · 🔄 `main`", svc.Name)
 		}
-		if text, url, ok := urls.Link(svc.Name, slug); ok {
+		if text, url, ok := urls.Link(svc.Name, svc.Host); ok {
 			fmt.Fprintf(&b, " · [%s](%s)", text, url)
 		}
 		b.WriteString("\n")

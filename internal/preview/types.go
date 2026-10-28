@@ -16,10 +16,12 @@ type DeployInputs struct {
 
 // ServiceEntry is one item in PreviewValues.Services. CommitSha and Metadata
 // are populated only for the service that owns the preview; other entries
-// render as a bare {name: ...} and track main.
+// render as a bare {name: ...} and track main. Host is the ingress host
+// doublure computed for an exposed service, and is empty otherwise.
 type ServiceEntry struct {
 	Name      string    `yaml:"name"`
 	CommitSha string    `yaml:"commitSha,omitempty"`
+	Host      string    `yaml:"host,omitempty"`
 	Metadata  *Metadata `yaml:"metadata,omitempty"`
 }
 

@@ -76,6 +76,26 @@ func UnpinPR(vals PreviewValues, owner, repo string, number int) (PreviewValues,
 	return PreviewValues{Services: services}, removed, pinned
 }
 
+// ApplyHosts returns a copy of vals where every entry exposed by urls carries
+// its preview host (URLConfig.Host for slug) and every other entry has an
+// empty Host. When urls is not enabled, every Host is empty. vals is never
+// mutated.
+func ApplyHosts(vals PreviewValues, slug string, urls URLConfig) PreviewValues {
+	services := make([]ServiceEntry, len(vals.Services))
+	copy(services, vals.Services)
+
+	for i := range services {
+		services[i].Host = ""
+		if !urls.Enabled() {
+			continue
+		}
+		if _, exposed := urls.Expose[services[i].Name]; exposed {
+			services[i].Host = urls.Host(services[i].Name, slug)
+		}
+	}
+	return PreviewValues{Services: services}
+}
+
 // belongsToPR reports whether entry was deployed by owner/repo#number.
 func belongsToPR(entry ServiceEntry, owner, repo string, number int) bool {
 	if entry.Metadata == nil {

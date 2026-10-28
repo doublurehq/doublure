@@ -3,7 +3,8 @@ package preview
 import "strings"
 
 // URLConfig is the parsed `preview` block of the gitops repo's services.yaml.
-// The zero value means the feature is off: no hosts and no links.
+// The zero value writes no hosts; links follow the hosts already written in
+// the preview file.
 type URLConfig struct {
 	// Domain is the parent of every preview host. Empty means off.
 	Domain string
@@ -19,27 +20,29 @@ func (c URLConfig) Enabled() bool {
 }
 
 // Host returns the per-preview host of service: <service>-<slug>.<domain>.
+// A <service>-<slug> label longer than 63 characters (the DNS label limit) is
+// cut and suffixed with a short hash of the full label.
 func (c URLConfig) Host(service, slug string) string {
-	return service + "-" + slug + "." + c.Domain
+	return capLabel(service+"-"+slug, maxLabelLen) + "." + c.Domain
 }
 
 // Link returns the Markdown-safe link text (<host><path>) and URL
-// (<scheme>://<host><path>, with the path percent-encoded) for service in the
-// preview slug. The boolean is false when the feature is off or the service is
-// not exposed.
-func (c URLConfig) Link(service, slug string) (string, string, bool) {
-	if !c.Enabled() {
+// (<scheme>://<host><path>, with the path percent-encoded) for the host
+// written on service's entry. The path is service's Expose path, or "/" when
+// service is not a key of Expose. The boolean is false only when host is
+// empty.
+func (c URLConfig) Link(service, host string) (string, string, bool) {
+	if host == "" {
 		return "", "", false
 	}
 	path, exposed := c.Expose[service]
 	if !exposed {
-		return "", "", false
+		path = "/"
 	}
 	scheme := "https"
 	if !c.TLS {
 		scheme = "http"
 	}
-	host := c.Host(service, slug)
 	return markdownEscape(host + path), scheme + "://" + host + escapeURLPath(path), true
 }
 

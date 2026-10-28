@@ -247,6 +247,9 @@ func TestDeploy_PreviewURLsInSummary(t *testing.T) {
 	if strings.Contains(fg.capturedSummary, "backend-2-feature-pricing") {
 		t.Errorf("summary links non-exposed backend-2, got:\n%s", fg.capturedSummary)
 	}
+	if fg.capturedURLs.Domain != "127.0.0.1.nip.io" {
+		t.Errorf("capturedURLs.Domain = %q, want 127.0.0.1.nip.io", fg.capturedURLs.Domain)
+	}
 }
 
 func TestDeploy_PreviewURLsDefaultToHTTPS(t *testing.T) {

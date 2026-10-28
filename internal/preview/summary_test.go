@@ -88,9 +88,9 @@ func TestBuildSummary_MissingPRURL(t *testing.T) {
 	}
 }
 
-// sharedURLFixture is the per-preview URL fixture shared with the charts CI
-// render step: front exposed with no path, backend-1 with /docs, backend-2 not
-// exposed.
+// sharedURLFixture is the per-preview URL fixture: front exposed with no
+// path, backend-1 with /docs, backend-2 not exposed. The charts CI render step
+// uses the hosts it produces for the slug feature-pricing.
 func sharedURLFixture() preview.URLConfig {
 	return preview.URLConfig{
 		Domain: "127.0.0.1.nip.io",
@@ -103,6 +103,7 @@ func TestBuildSummary_PreviewURLs(t *testing.T) {
 	catalog := []string{"backend-1", "backend-2", "front"}
 	in := sampleInputs()
 	vals := preview.BuildPreviewValues(in.ServiceName, in.CommitSha, catalog, in)
+	vals = preview.ApplyHosts(vals, "feature-pricing", sharedURLFixture())
 
 	got := preview.BuildSummary("feature-pricing", vals, sharedURLFixture(), "msg", "url")
 
@@ -126,6 +127,7 @@ func TestBuildSummary_PreviewURLsDefaultToHTTPS(t *testing.T) {
 	vals := preview.BuildPreviewValues(in.ServiceName, in.CommitSha, []string{"backend-1", "front"}, in)
 	urls := sharedURLFixture()
 	urls.TLS = true // tls omitted defaults to true
+	vals = preview.ApplyHosts(vals, "feature-pricing", urls)
 
 	got := preview.BuildSummary("feature-pricing", vals, urls, "msg", "url")
 
@@ -164,6 +166,7 @@ func TestBuildSummary_PreviewURLPathEscaping(t *testing.T) {
 			in := sampleInputs()
 			vals := preview.BuildPreviewValues(in.ServiceName, in.CommitSha, []string{"front"}, in)
 			urls := preview.URLConfig{Domain: "example.com", TLS: true, Expose: map[string]string{"front": tt.path}}
+			vals = preview.ApplyHosts(vals, "feature-pricing", urls)
 
 			got := preview.BuildSummary("feature-pricing", vals, urls, "msg", "url")
 
@@ -171,6 +174,25 @@ func TestBuildSummary_PreviewURLPathEscaping(t *testing.T) {
 				t.Errorf("summary missing %q, got:\n%s", tt.want, got)
 			}
 		})
+	}
+}
+
+func TestBuildSummary_LinksWrittenHosts(t *testing.T) {
+	vals := preview.PreviewValues{Services: []preview.ServiceEntry{
+		{Name: "front"},
+		{Name: "backend-2", Host: "backend-2-feature-pricing.127.0.0.1.nip.io"},
+	}}
+
+	got := preview.BuildSummary("feature-pricing", vals, sharedURLFixture(), "msg", "url")
+
+	for _, want := range []string{
+		"- **front** · 🔄 `main`\n",
+		"- **backend-2** · 🔄 `main` · [backend-2-feature-pricing.127.0.0.1.nip.io/]" +
+			"(http://backend-2-feature-pricing.127.0.0.1.nip.io/)\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing %q, got:\n%s", want, got)
+		}
 	}
 }
 
