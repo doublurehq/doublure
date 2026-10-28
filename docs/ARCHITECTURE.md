@@ -5,10 +5,10 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
 ```
  service repo CI ── builds + pushes the image (no deploy call)
 
- PR label or push ── pull_request ──► POST /webhooks/github ── async reconcile ──► doublure serve ──► gitops repo
- manual trigger ────────────────────► POST /v1/deploy ─────────────────────────────┘ │ (GitHub App)   previews/<slug>/values.yaml
-   ▲                                                                                 │                    │
-   └──────────────── PR comment (fan-out) ◄──────────────────────────────────────────┘                    ▼
+ manual trigger ──► POST /v1/deploy ──────────────────────────────────────────────────────────┐
+ GitHub ── pull_request (PR label or push) ──► POST /webhooks/github ── async reconcile ──► doublure serve ──► gitops repo
+   ▲                                                                                          │ (GitHub App)   previews/<slug>/values.yaml
+   └──────────────── PR comment (fan-out) ◄───────────────────────────────────────────────────┘                  ▼
                                      ArgoCD ApplicationSet (git dir generator: previews/*)
                                        └─ preview-env chart → AppProject + Namespace + one Application per service
                                             └─ service chart (k8s/ in each service repo) at commitSha or main
