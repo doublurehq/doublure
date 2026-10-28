@@ -1,4 +1,5 @@
-# Number of server replicas.
+# Number of server replicas. Keep 1: reconciles are serialized within one
+# replica, and the one-PR-per-service check of a preview relies on it.
 replicaCount: 1
 
 # Container image; an empty tag defaults to .Chart.AppVersion.
