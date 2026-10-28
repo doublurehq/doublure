@@ -22,6 +22,7 @@ make dev-bootstrap         # shows a preflight plan, then (on y) creates the App
 
 make dev-verify            # confirms the credentials are good and shows installation IDs
 make dev-serve             # starts the server
+make dev-cleanup           # runs one cleanup sweep (CLEANUP_TTL=168h make dev-cleanup to also expire idle previews)
 ```
 
 That's the whole loop. The sections below explain each step in case something goes wrong.
