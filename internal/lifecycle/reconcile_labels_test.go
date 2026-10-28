@@ -216,6 +216,18 @@ func TestReconcile_PayloadTeardownWithNamedLabel(t *testing.T) {
 	}
 }
 
+func TestReconcile_PayloadTeardownSkipsEmptyBranchSlug(t *testing.T) {
+	captureLogs(t)
+	f := &reconcileFake{prErr: errors.New("boom")}
+	ev := event("closed", "front", "", "preview:a")
+	ev.HeadRef = "---"
+	lifecycle.ReconcilePR(context.Background(), f, ev)
+
+	if want := []string{"teardown:a"}; !slices.Equal(f.calls, want) {
+		t.Errorf("calls = %v, want %v", f.calls, want)
+	}
+}
+
 func TestReconcile_IgnoredNamedLabelLogged(t *testing.T) {
 	capture := captureLogs(t)
 	f := &reconcileFake{pr: fetchedPR("front", true, "preview", "preview:")}

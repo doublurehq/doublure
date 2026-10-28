@@ -270,7 +270,10 @@ func payloadTeardown(ctx context.Context, api TeardownAPI, ev Event, label strin
 		slog.String("err", err.Error()),
 	)
 	branch := preview.Slugify(ev.HeadRef)
-	slugs := []string{branch}
+	var slugs []string
+	if branch != "" {
+		slugs = append(slugs, branch)
+	}
 	for _, slug := range preview.ResolveTarget(ev.Labels, ev.HeadRef, label).Named {
 		if slug != branch {
 			slugs = append(slugs, slug)
