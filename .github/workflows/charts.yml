@@ -149,6 +149,8 @@ jobs:
               imageTagParam: image.tag
               hostParam: ingress.hostname
               valueFiles: [values-preview.yaml]
+            front:
+              branch: release
           EOF
           )
           got=$(echo "$out" | yq -N 'select(.kind == "Application") | .metadata.name + " " + .spec.source.targetRevision + " " + .spec.source.path + " " + (.spec.source.helm.valueFiles // "absent" | to_json(0)) + " " + ([.spec.source.helm.parameters[] | .name + "=" + .value] | join(","))')

@@ -34,11 +34,16 @@ func TestBuildSummary_PinnedAndMainTracking(t *testing.T) {
 }
 
 func TestBuildSummary_BranchBadge(t *testing.T) {
-	vals := preview.PreviewValues{Services: []preview.ServiceEntry{{Name: "backend-1"}, {Name: "front"}}}
+	vals := preview.PreviewValues{Services: []preview.ServiceEntry{
+		{Name: "backend-1"},
+		{Name: "backend-2", CommitSha: "abc1234567890"},
+		{Name: "front"},
+	}}
+	branches := map[string]string{"backend-1": "master", "backend-2": "release"}
 
-	got := preview.BuildSummary("slug", vals, preview.URLConfig{}, map[string]string{"backend-1": "master"}, "m", "u")
+	got := preview.BuildSummary("slug", vals, preview.URLConfig{}, branches, "m", "u")
 
-	want := "## 🚀 Preview: `slug`\n\n- **backend-1** · 🔄 `master`\n- **front** · 🔄 `main`\n\n---\n🔗 [m](u)"
+	want := "## 🚀 Preview: `slug`\n\n- **backend-1** · 🔄 `master`\n- **backend-2** · 📌 `abc12345`\n- **front** · 🔄 `main`\n\n---\n🔗 [m](u)"
 	if got != want {
 		t.Errorf("summary mismatch\n got:\n%s\nwant:\n%s", got, want)
 	}
