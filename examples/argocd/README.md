@@ -30,26 +30,4 @@ Per-service chart settings (`serviceCharts` in `services.yaml`) need `preview-en
 
 Charts are published to `oci://ghcr.io/doublurehq/charts/*`.
 
-## Install doublure
-
-Create the namespace and the Secret the chart reads (it never creates Secrets itself):
-
-```bash
-kubectl create namespace doublure
-kubectl create secret generic doublure -n doublure \
-  --from-file=github-private-key=./app.private-key.pem \
-  --from-literal=github-webhook-secret="$GITHUB_WEBHOOK_SECRET" \
-  --from-literal=deploy-token="$DOUBLURE_DEPLOY_TOKEN"
-```
-
-Install the chart from [`charts/doublure`](../../charts/doublure):
-
-```bash
-helm install doublure oci://ghcr.io/doublurehq/charts/doublure --version 0.1.0 -n doublure \
-  --set-string config.githubAppId=<app-id> \
-  --set-string config.githubInstallationId=<installation-id> \
-  --set config.gitopsRepo=<owner>/<gitops-repo> \
-  --set existingSecret=doublure
-```
-
-Set `ingress.enabled=true` and `ingress.host` to expose `/webhooks/github` (GitHub App webhook) and `/v1/deploy` (manual trigger). The image tag defaults to the chart `appVersion` (`ghcr.io/doublurehq/doublure:<appVersion>`).
+Install doublure: [docs/INSTALL.md](../../docs/INSTALL.md).

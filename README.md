@@ -48,6 +48,10 @@ Authorization: Bearer $DOUBLURE_DEPLOY_TOKEN
 
 A manual deploy always targets the slug of `head_ref`, and skips the one-PR-per-service check. The cleanup sweep keeps its pin only at the PR's target preview (the slug of its single `preview:<name>` label, or its branch slug when it has only the plain `preview` label), or at its branch slug when the PR has no preview label. A PR with conflicting `preview:<name>` labels keeps no pin. A webhook reconcile of the PR also unpins it from its branch slug and its named-label slugs other than its target.
 
+## Install
+
+From an empty cluster to a first preview: [docs/INSTALL.md](docs/INSTALL.md).
+
 ## Status
 
 Early development. Working: GitHub App auth, label-triggered previews, `/v1/deploy`, gitops writes with conflict retry, PR comments, webhook verification.
@@ -83,10 +87,11 @@ Local setup: [DEVELOPMENT.md](DEVELOPMENT.md).
 | [`charts/preview-env`](charts/preview-env) | One preview: AppProject, Namespace, one ArgoCD Application per service |
 | [`charts/app`](charts/app) | Generic service chart; service charts wrap it as a dependency aliased `app` |
 
-ArgoCD wiring and install steps: [examples/argocd](examples/argocd/README.md). Charts are published to `oci://ghcr.io/doublurehq/charts`; see [CONTRIBUTING.md](CONTRIBUTING.md#releases) for how versions are set.
+Install: [docs/INSTALL.md](docs/INSTALL.md); ArgoCD wiring: [examples/argocd](examples/argocd/README.md). Charts are published to `oci://ghcr.io/doublurehq/charts`; see [CONTRIBUTING.md](CONTRIBUTING.md#releases) for how versions are set.
 
 ## Docs
 
+- [Install](docs/INSTALL.md): from an empty cluster to a first preview
 - [Architecture](docs/ARCHITECTURE.md): components, gitops and service repo contracts, API
 - [Roadmap](docs/ROADMAP.md): what's left for v1
 
