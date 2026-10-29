@@ -93,8 +93,8 @@
         {
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.9, sum by (le, service) (rate(doublure_preview_spinup_seconds_bucket[24h])))",
-          "legendFormat": "{{service}}"
+          "expr": "histogram_quantile(0.9, sum by (le, catalog_service) (rate(doublure_preview_spinup_seconds_bucket[24h])))",
+          "legendFormat": "{{catalog_service}}"
         }
       ]
     },
