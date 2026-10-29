@@ -103,13 +103,7 @@ func serveCmd() *cobra.Command {
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
-			go func() {
-				slog.InfoContext(ctx, "starting server", "addr", cfg.ListenAddr)
-				if listenErr := httpSrv.ListenAndServe(); listenErr != nil && listenErr != http.ErrServerClosed {
-					slog.ErrorContext(ctx, "server error", "err", listenErr)
-					os.Exit(1)
-				}
-			}()
+			serveInBackground(ctx, "server", httpSrv)
 			metricsSrv := startMetricsServer(ctx, cfg.MetricsAddr, m)
 			startSweepLoop(ctx, srv, sweepAPI{Client: gitopsClient, Metrics: m}, m, interval, ttl)
 
@@ -138,15 +132,21 @@ func startMetricsServer(ctx context.Context, addr string, m *metrics.Metrics) *h
 		Handler:           mux,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
+	serveInBackground(ctx, "metrics server", metricsSrv)
+	return metricsSrv
+}
+
+// serveInBackground runs srv.ListenAndServe in the background, logging it as
+// name, and exits the process when it fails for any reason but shutdown.
+func serveInBackground(ctx context.Context, name string, srv *http.Server) {
 	logger := slog.Default()
 	go func() {
-		logger.InfoContext(ctx, "starting metrics server", "addr", addr)
-		if listenErr := metricsSrv.ListenAndServe(); listenErr != nil && listenErr != http.ErrServerClosed {
-			logger.ErrorContext(ctx, "metrics server error", "err", listenErr)
+		logger.InfoContext(ctx, "starting "+name, "addr", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.ErrorContext(ctx, name+" error", "err", err)
 			os.Exit(1)
 		}
 	}()
-	return metricsSrv
 }
 
 // sweepSchedule reads CLEANUP_INTERVAL and, when it is set, CLEANUP_TTL: the
