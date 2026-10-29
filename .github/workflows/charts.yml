@@ -199,6 +199,25 @@ jobs:
           echo "$out" | grep -q 'value: "1234567"'
           echo "$out" | grep -q 'value: "87654321"'
 
+      - name: Render preview-env with a non-string serviceCharts value fails
+        run: |
+          for bad in 'branch: no' 'path: on' 'imageTagParam: 1' 'valueFiles: [off]' 'valueFiles: off'; do
+            if out=$(helm template preview-x charts/preview-env -f - 2>&1 <<EOF
+          serviceRepos:
+            api: https://github.com/acme/api.git
+          services:
+            - name: api
+          serviceCharts:
+            api:
+              $bad
+          EOF
+            ); then
+              echo "::error::expected render to fail with serviceCharts.api $bad"
+              exit 1
+            fi
+            echo "$out" | grep -q 'serviceCharts.api.'
+          done
+
       - name: Render doublure without required values fails
         run: |
           if out=$(helm template t charts/doublure 2>&1); then
