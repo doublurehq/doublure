@@ -231,8 +231,12 @@ func TestLoad_MetricsAddr(t *testing.T) {
 }
 
 func TestLoad_InvalidMetricsAddr(t *testing.T) {
-	_, err := loadWithMetricsAddr(t, true, "9090")
-	if want := `METRICS_ADDR must be host:port, got "9090"`; err == nil || err.Error() != want {
-		t.Fatalf("err = %v, want %q", err, want)
+	for _, value := range []string{"9090", ":", "host:abc", ":99999"} {
+		t.Run(value, func(t *testing.T) {
+			_, err := loadWithMetricsAddr(t, true, value)
+			if want := `METRICS_ADDR must be host:port, got "` + value + `"`; err == nil || err.Error() != want {
+				t.Fatalf("err = %v, want %q", err, want)
+			}
+		})
 	}
 }

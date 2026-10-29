@@ -86,10 +86,21 @@ func loadMetricsAddr() (string, error) {
 	if addr == "" {
 		return "", nil
 	}
-	if _, _, err := net.SplitHostPort(addr); err != nil {
+	if !validHostPort(addr) {
 		return "", fmt.Errorf("METRICS_ADDR must be host:port, got %q", addr)
 	}
 	return addr, nil
+}
+
+// validHostPort reports whether addr is a host:port with a numeric port in
+// 0-65535.
+func validHostPort(addr string) bool {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return false
+	}
+	_, err = strconv.ParseUint(port, 10, 16)
+	return err == nil
 }
 
 func requireEnv(key string) (string, error) {
