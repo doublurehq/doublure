@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -24,6 +26,9 @@ type ServiceCatalog struct {
 	Label string
 	// Repos maps each service to its git URL, as written in serviceRepos.
 	Repos map[string]string
+	// Branches maps each service whose serviceCharts entry sets branch to that
+	// branch. It is nil when no entry sets one.
+	Branches map[string]string
 }
 
 // DefaultLabel is the preview label when preview.label is absent.
@@ -62,16 +67,35 @@ var domainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9
 // strTag is the resolved YAML tag of a string scalar.
 const strTag = "!!str"
 
+// nullTag is the resolved YAML tag of a null scalar.
+const nullTag = "!!null"
+
 // pairStride is the step between keys in a mapping node's Content, which
 // alternates key and value nodes.
 const pairStride = 2
 
-// servicesFile is services.yaml. Top-level keys other than serviceRepos and
-// preview are kept in Rest so that only the preview block is strict.
+// errMalformedServiceCharts is wrapped by every serviceCharts block validation
+// error raised after decoding.
+var errMalformedServiceCharts = errors.New("malformed serviceCharts block")
+
+// servicesFile is services.yaml. Top-level keys other than serviceRepos, preview
+// and serviceCharts are kept in Rest so that only the preview and serviceCharts
+// blocks are strict.
 type servicesFile struct {
-	ServiceRepos yaml.Node      `yaml:"serviceRepos"`
-	Preview      *previewBlock  `yaml:"preview"`
-	Rest         map[string]any `yaml:",inline"`
+	ServiceRepos  yaml.Node                `yaml:"serviceRepos"`
+	Preview       *previewBlock            `yaml:"preview"`
+	ServiceCharts map[string]*serviceChart `yaml:"serviceCharts"`
+	Rest          map[string]any           `yaml:",inline"`
+}
+
+// serviceChart is a serviceCharts entry. Its fields stay nodes so that a YAML
+// string can be told apart from a scalar yaml.v3 would convert (`branch: 123`).
+type serviceChart struct {
+	Branch        yaml.Node `yaml:"branch"`
+	Path          yaml.Node `yaml:"path"`
+	ImageTagParam yaml.Node `yaml:"imageTagParam"`
+	HostParam     yaml.Node `yaml:"hostParam"`
+	ValueFiles    yaml.Node `yaml:"valueFiles"`
 }
 
 type previewBlock struct {
@@ -130,6 +154,10 @@ func malformed(key, format string, args ...any) error {
 	return fmt.Errorf("%w: %s: %s", errMalformedPreview, key, fmt.Sprintf(format, args...))
 }
 
+func malformedCharts(key, msg string) error {
+	return fmt.Errorf("%w: %s: %s", errMalformedServiceCharts, key, msg)
+}
+
 // ParseServices parses and validates the content of services.yaml.
 func ParseServices(raw []byte) (*ServiceCatalog, error) {
 	var doc servicesFile
@@ -163,7 +191,99 @@ func ParseServices(raw []byte) (*ServiceCatalog, error) {
 	if doc.Preview != nil && doc.Preview.Label != nil {
 		label = string(*doc.Preview.Label)
 	}
-	return &ServiceCatalog{Services: services, URLs: urls, Label: label, Repos: repos}, nil
+	branches, err := parseServiceCharts(doc.ServiceCharts, repos)
+	if err != nil {
+		return nil, fmt.Errorf("services.yaml: %w", err)
+	}
+	return &ServiceCatalog{Services: services, URLs: urls, Label: label, Repos: repos, Branches: branches}, nil
+}
+
+// parseServiceCharts validates the decoded serviceCharts block, in sorted
+// service order, and returns the branch of each entry that sets one (nil when
+// none does).
+func parseServiceCharts(sc map[string]*serviceChart, repos map[string]string) (map[string]string, error) {
+	var branches map[string]string
+	for _, name := range slices.Sorted(maps.Keys(sc)) {
+		if _, ok := repos[name]; !ok {
+			return nil, malformedCharts("serviceCharts."+name, "not in serviceRepos")
+		}
+		branch, err := chartEntry(name, sc[name])
+		if err != nil {
+			return nil, err
+		}
+		if branch == "" {
+			continue
+		}
+		if branches == nil {
+			branches = make(map[string]string)
+		}
+		branches[name] = branch
+	}
+	return branches, nil
+}
+
+// chartEntry validates the fields of one serviceCharts entry, in file-format
+// order, and returns its branch ("" when unset). A null entry sets nothing.
+func chartEntry(name string, c *serviceChart) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	branch, err := chartString(name, "branch", c.Branch)
+	if err != nil {
+		return "", err
+	}
+	if _, err = chartString(name, "path", c.Path); err != nil {
+		return "", err
+	}
+	if _, err = chartString(name, "imageTagParam", c.ImageTagParam); err != nil {
+		return "", err
+	}
+	if _, err = chartString(name, "hostParam", c.HostParam); err != nil {
+		return "", err
+	}
+	if err = chartValueFiles(name, c.ValueFiles); err != nil {
+		return "", err
+	}
+	return branch, nil
+}
+
+// chartString returns the value of a serviceCharts string field, "" when it is
+// absent or null, and an error when it is not a non-empty YAML string.
+func chartString(name, field string, n yaml.Node) (string, error) {
+	if n.Kind == yaml.AliasNode && n.Alias != nil {
+		n = *n.Alias
+	}
+	switch {
+	case n.Kind == 0 || n.Tag == nullTag:
+		return "", nil
+	case n.Kind != yaml.ScalarNode || n.Tag != strTag || n.Value == "":
+		return "", malformedCharts("serviceCharts."+name+"."+field, "must be a non-empty string")
+	}
+	return n.Value, nil
+}
+
+// chartValueFiles checks that a serviceCharts valueFiles field, when set, is a
+// list of non-empty YAML strings.
+func chartValueFiles(name string, n yaml.Node) error {
+	if n.Kind == yaml.AliasNode && n.Alias != nil {
+		n = *n.Alias
+	}
+	if n.Kind == 0 || n.Tag == nullTag {
+		return nil
+	}
+	bad := malformedCharts("serviceCharts."+name+".valueFiles", "must be a list of non-empty strings")
+	if n.Kind != yaml.SequenceNode {
+		return bad
+	}
+	for _, item := range n.Content {
+		if item.Kind == yaml.AliasNode && item.Alias != nil {
+			item = item.Alias
+		}
+		if item.Kind != yaml.ScalarNode || item.Tag != strTag || item.Value == "" {
+			return bad
+		}
+	}
+	return nil
 }
 
 // previewURLs validates the decoded preview block. An absent block or an

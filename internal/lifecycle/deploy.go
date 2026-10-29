@@ -44,6 +44,8 @@ func DeployPR(
 		return nil, nil, err //nolint:nilnil // the write error is the last result; no fan-out ran
 	}
 
-	summary := preview.BuildSummary(slug, result.Values, catalog.URLs, result.CommitMessage, result.CommitURL)
+	summary := preview.BuildSummary(
+		slug, result.Values, catalog.URLs, catalog.Branches, result.CommitMessage, result.CommitURL,
+	)
 	return result, api.FanOutPRComments(ctx, result.Values, summary), nil
 }
