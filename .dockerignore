@@ -1,0 +1,10 @@
+# Only go.mod, go.sum, cmd/ and internal/ are needed to build the image.
+.git
+.github
+.env
+*.pem
+bin
+charts
+docs
+examples
+*.md
