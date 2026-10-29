@@ -105,6 +105,7 @@ kubectl create secret generic doublure -n doublure \
   --from-file=github-private-key="$GITHUB_PRIVATE_KEY_PATH" \
   --from-literal=github-webhook-secret="$GITHUB_WEBHOOK_SECRET" \
   --from-literal=deploy-token="$DOUBLURE_DEPLOY_TOKEN"
+  # optional, for spin-up time: --from-literal=argocd-webhook-token="$ARGOCD_WEBHOOK_TOKEN"
 helm install doublure oci://ghcr.io/doublurehq/charts/doublure -n doublure \
   --set-string config.githubAppId="$GITHUB_APP_ID" \
   --set-string config.githubInstallationId="$GITHUB_INSTALLATION_ID" \
@@ -116,7 +117,7 @@ helm install doublure oci://ghcr.io/doublurehq/charts/doublure -n doublure \
 ```
 
 - Pin `--version` in production. The image tag defaults to the chart `appVersion`.
-- The Ingress also exposes `POST /v1/deploy`, the manual trigger, protected by the `deploy-token` bearer token (see [README](../README.md)).
+- The Ingress also exposes `POST /v1/deploy`, the manual trigger, protected by the `deploy-token` bearer token (see [README](../README.md)), and `POST /webhooks/argocd`, protected by the optional `argocd-webhook-token` bearer token.
 - `cleanup.ttl` (e.g. `168h`) is optional: it also deletes previews with no deploy for that long.
 - `cleanup.interval=1h` runs the cleanup sweep in the server, which exports its metrics (with the Prometheus Operator, scrape them with `metrics.serviceMonitor.enabled=true` and `metrics.serviceMonitor.labels` matching its selector, e.g. `release: <kube-prometheus-stack release>`); `cleanup.enabled=true`, an hourly CronJob without metrics, is the alternative, not to combine with it.
 - Keep `replicaCount: 1`.
@@ -128,6 +129,18 @@ Check:
 ```bash
 curl https://doublure.example.com/healthz   # {"status":"ok"}
 ```
+
+### Spin-up time (optional)
+
+To measure how long each preview service takes to come up (`doublure_preview_spinup_seconds`), Argo CD's notifications controller calls doublure when a service is Healthy. Generate a token (e.g. `openssl rand -hex 32`) as `ARGOCD_WEBHOOK_TOKEN`, add it to the doublure Secret as `argocd-webhook-token` (the optional line above) and restart doublure, then apply [`examples/argocd/notifications-values.yaml`](../examples/argocd/notifications-values.yaml) to your Argo CD release:
+
+```bash
+helm upgrade argocd argo/argo-cd -n argocd --version <your installed argo-cd chart version> \
+  --reuse-values -f notifications-values.yaml \
+  --set-string notifications.secret.items.doublure-webhook-token="$ARGOCD_WEBHOOK_TOKEN"
+```
+
+Check: `doublure_argocd_events_total` increases after the next labeled PR. Without Helm, see the file's comments. Details: ARCHITECTURE [Spin-up endpoint](ARCHITECTURE.md#spin-up-endpoint).
 
 ## 7. Service repos
 

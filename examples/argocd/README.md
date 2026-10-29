@@ -22,6 +22,10 @@ To give each preview its own URL, uncomment the `preview` block in `services.yam
 
 Per-service chart settings (`serviceCharts` in `services.yaml`) need `preview-env` 0.4.0 or later and doublure 0.11.0 or later; with an older chart the block is ignored and the defaults apply.
 
+## Spin-up time
+
+[`notifications-values.yaml`](notifications-values.yaml): Argo CD notifications that report each preview service's spin-up time to doublure (`/webhooks/argocd`); see [INSTALL](../../docs/INSTALL.md#spin-up-time-optional).
+
 ## Adapt to your org
 
 - Replace `https://github.com/doublurehq/demo-gitops.git` with your gitops repo URL, in both the AppProject and the ApplicationSet.

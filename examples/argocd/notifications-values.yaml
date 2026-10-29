@@ -1,0 +1,57 @@
+# Argo CD notifications for doublure's preview spin-up time
+# (doublure_preview_spinup_seconds): values for the argo-helm argo-cd chart.
+#
+# When a preview service's Application is synced and Healthy at a new
+# revision, the notifications controller POSTs to doublure's
+# /webhooks/argocd, authenticated by doublure's ARGOCD_WEBHOOK_TOKEN.
+#
+# Apply to your Argo CD release, passing the token at install time (this file
+# holds no secret):
+#
+#   helm upgrade argocd argo/argo-cd -n argocd --version <your installed argo-cd chart version> \
+#     --reuse-values -f notifications-values.yaml \
+#     --set-string notifications.secret.items.doublure-webhook-token="$ARGOCD_WEBHOOK_TOKEN"
+#
+# Argo CD installed without Helm: put the same keys (service.webhook.doublure,
+# template.doublure-spinup, trigger.on-preview-healthy and subscriptions) under
+# `data` of the argocd-notifications-cm ConfigMap, and the doublure-webhook-token
+# key in the argocd-notifications-secret Secret.
+notifications:
+  notifiers:
+    # Point the url at wherever doublure's Service is.
+    service.webhook.doublure: |
+      url: http://doublure.doublure.svc:8080
+      headers:
+        - name: Authorization
+          value: Bearer $doublure-webhook-token
+
+  templates:
+    template.doublure-spinup: |
+      webhook:
+        doublure:
+          method: POST
+          path: /webhooks/argocd
+          body: |
+            {
+              "app": "{{ .app.metadata.name }}",
+              "service": "{{ index .app.metadata.labels "app.kubernetes.io/name" }}",
+              "preview": "{{ index .app.metadata.labels "app.kubernetes.io/instance" }}",
+              "revision": "{{ .app.status.operationState.syncResult.revision }}",
+              "updatedAt": "{{ index .app.metadata.annotations "preview.doublure.dev/updated-at" }}"
+            }
+
+  triggers:
+    # Fires once per Application revision.
+    trigger.on-preview-healthy: |
+      - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+        oncePer: app.status?.operationState.syncResult.revision
+        send: [doublure-spinup]
+
+  # Service Applications of every preview; the selector excludes the
+  # per-preview parent Applications, which carry only part-of.
+  subscriptions:
+    - recipients:
+        - doublure
+      triggers:
+        - on-preview-healthy
+      selector: app.kubernetes.io/part-of=preview-environments,app.kubernetes.io/managed-by=argocd
