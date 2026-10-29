@@ -396,6 +396,11 @@ func TestParseServices_ServiceCharts(t *testing.T) {
 			charts: "b: &b master\nf: &f [values.yaml]\nserviceCharts:\n  backend-1:\n    branch: *b\n    valueFiles: *f\n",
 			want:   map[string]string{"backend-1": "master"},
 		},
+		{
+			name:   "quoted yaml 1.1 boolean",
+			charts: "serviceCharts:\n  backend-1:\n    branch: \"no\"\n",
+			want:   map[string]string{"backend-1": "no"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -506,6 +511,26 @@ func TestParseServices_MalformedServiceCharts(t *testing.T) {
 			"valueFiles holding a null",
 			"serviceCharts:\n  backend-1:\n    valueFiles: [~]\n",
 			prefix + "serviceCharts.backend-1.valueFiles: must be a list of non-empty strings",
+		},
+		{
+			"branch unquoted yaml 1.1 boolean",
+			"serviceCharts:\n  backend-1:\n    branch: no\n",
+			prefix + "serviceCharts.backend-1.branch: \"no\" must be quoted: YAML 1.1 reads it as a boolean",
+		},
+		{
+			"path unquoted yaml 1.1 boolean",
+			"serviceCharts:\n  backend-1:\n    path: on\n",
+			prefix + "serviceCharts.backend-1.path: \"on\" must be quoted: YAML 1.1 reads it as a boolean",
+		},
+		{
+			"imageTagParam unquoted yaml 1.1 boolean",
+			"serviceCharts:\n  backend-1:\n    imageTagParam: Y\n",
+			prefix + "serviceCharts.backend-1.imageTagParam: \"Y\" must be quoted: YAML 1.1 reads it as a boolean",
+		},
+		{
+			"valueFiles holding an unquoted yaml 1.1 boolean",
+			"serviceCharts:\n  backend-1:\n    valueFiles: [off]\n",
+			prefix + "serviceCharts.backend-1.valueFiles: \"off\" must be quoted: YAML 1.1 reads it as a boolean",
 		},
 	}
 	for _, tt := range tests {

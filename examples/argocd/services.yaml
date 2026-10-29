@@ -11,7 +11,7 @@ serviceRepos:
 #     path: deploy/helm           # default "k8s/": chart path in the service repo
 #     imageTagParam: image.tag    # default "app.image.tag": Helm parameter set to the image tag
 #     hostParam: ingress.hostname # default "app.ingress.host": Helm parameter set to the preview host
-#     valueFiles:                 # default none: extra values files, relative to path
+#     valueFiles:                 # default none: extra values files; relative to path, "/" from the repo root, URLs fetched remotely
 #       - values-preview.yaml
 
 # Per-preview URLs (optional): each exposed service gets the ingress host

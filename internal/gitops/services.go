@@ -258,8 +258,27 @@ func chartString(name, field string, n yaml.Node) (string, error) {
 		return "", nil
 	case n.Kind != yaml.ScalarNode || n.Tag != strTag || n.Value == "":
 		return "", malformedCharts("serviceCharts."+name+"."+field, "must be a non-empty string")
+	case yaml11Bool(&n):
+		return "", malformedCharts("serviceCharts."+name+"."+field, quoteMsg(n.Value))
 	}
 	return n.Value, nil
+}
+
+// yaml11BoolRe matches the YAML 1.1 boolean forms that yaml.v3 tags !!str but
+// Helm, which reads services.yaml as YAML 1.1, decodes as booleans.
+var yaml11BoolRe = regexp.MustCompile(`^(y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF)$`)
+
+// yaml11Bool reports whether n is a plain (unquoted) scalar that YAML 1.1
+// reads as a boolean.
+func yaml11Bool(n *yaml.Node) bool {
+	if n.Style&(yaml.DoubleQuotedStyle|yaml.SingleQuotedStyle) != 0 {
+		return false
+	}
+	return yaml11BoolRe.MatchString(n.Value)
+}
+
+func quoteMsg(v string) string {
+	return fmt.Sprintf("%q must be quoted: YAML 1.1 reads it as a boolean", v)
 }
 
 // chartValueFiles checks that a serviceCharts valueFiles field, when set, is a
@@ -281,6 +300,9 @@ func chartValueFiles(name string, n yaml.Node) error {
 		}
 		if item.Kind != yaml.ScalarNode || item.Tag != strTag || item.Value == "" {
 			return bad
+		}
+		if yaml11Bool(item) {
+			return malformedCharts("serviceCharts."+name+".valueFiles", quoteMsg(item.Value))
 		}
 	}
 	return nil
