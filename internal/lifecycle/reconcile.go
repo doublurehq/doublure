@@ -17,6 +17,14 @@ import (
 // actionUnlabeled is the webhook action of a removed label.
 const actionUnlabeled = "unlabeled"
 
+// Reconcile outcomes, the outcome label of Recorder.Reconcile.
+const (
+	outcomeDeployed = "deployed"
+	outcomeSkipped  = "skipped"
+	outcomeFailed   = "failed"
+	outcomeTornDown = "torn_down"
+)
+
 // ReconcileAPI is the subset of gitops.Client used by ReconcilePR.
 type ReconcileAPI interface {
 	DeployAPI
@@ -55,57 +63,69 @@ type Event struct {
 // the catalog, and a closed fork PR is still torn down. When the catalog or
 // the PR can't be read, it falls back to tearing down the payload's head
 // branch and named labels as closed.
+//
+// Each call records exactly one outcome through the Recorder: failed when the
+// catalog, the PR or the target preview can't be read on a non-closed event,
+// or when every service write failed; otherwise skipped (with its reason)
+// when the reconcile was skipped; otherwise deployed when a service write
+// succeeded; otherwise torn_down.
 func ReconcilePR(ctx context.Context, api ReconcileAPI, ev Event) {
+	o, r := reconcile(ctx, api, ev)
+	api.Reconcile(o, r)
+}
+
+// reconcile is ReconcilePR without the recording. It returns the outcome and,
+// when the outcome is skipped, the reason ("" otherwise).
+func reconcile(ctx context.Context, api ReconcileAPI, ev Event) (string, string) {
 	closed := ev.Action == "closed"
 	catalog, err := api.FetchServiceCatalog(ctx)
 	if err != nil {
 		if closed {
 			payloadTeardown(ctx, api, ev, gitops.DefaultLabel, err)
-			return
+			return outcomeTornDown, ""
 		}
-		reconcileFailed(ctx, ev, err)
-		return
+		return reconcileFailed(ctx, ev, err)
 	}
 	services := catalog.ServicesForRepo(ev.Owner, ev.Repo)
 	if !closed {
 		if reason := payloadSkipReason(ev, catalog.Label); reason != "" {
-			reconcileSkipped(ctx, ev, reason)
-			return
+			return reconcileSkipped(ctx, ev, reason)
 		}
 		if len(services) == 0 {
-			reconcileSkipped(ctx, ev, "repo not in catalog")
-			return
+			return reconcileSkipped(ctx, ev, "repo not in catalog")
 		}
 	}
 	pr, err := api.GetPullRequest(ctx, ev.Owner, ev.Repo, ev.Number)
 	if err != nil {
 		if closed {
 			payloadTeardown(ctx, api, ev, catalog.Label, err)
-			return
+			return outcomeTornDown, ""
 		}
-		reconcileFailed(ctx, ev, err)
-		return
+		return reconcileFailed(ctx, ev, err)
 	}
 
 	t := preview.ResolveTarget(pr.Labels, pr.HeadRef, catalog.Label)
 	logIgnored(ctx, ev, t)
 	deploy := pr.Open && t.Slug != ""
 	if (deploy || !closed) && !strings.EqualFold(pr.HeadFullName, pr.FullName) {
-		reconcileSkipped(ctx, ev, "fork pr")
-		return
+		return reconcileSkipped(ctx, ev, "fork pr")
 	}
 	if deploy && len(services) == 0 {
-		reconcileSkipped(ctx, ev, "repo not in catalog")
-		return
+		return reconcileSkipped(ctx, ev, "repo not in catalog")
 	}
 	cleanup(ctx, api, ev, pr, t, catalog.Label)
-	if refusedByHolder(ctx, api, ev, pr, t, services, catalog.Label) {
-		return
+	if o, r := refusedByHolder(ctx, api, ev, pr, t, services, catalog.Label); o != "" {
+		return o, r
 	}
+	outcome := outcomeTornDown
 	if deploy {
-		deployServices(ctx, api, catalog, services, ev, pr, t.Slug)
+		outcome = deployServices(ctx, api, catalog, services, ev, pr, t.Slug)
 	}
-	postLabelConflict(ctx, api, ev, pr, catalog.Label, t)
+	// A conflict leaves the PR without a target, so nothing was deployed.
+	if o, r := postLabelConflict(ctx, api, ev, pr, catalog.Label, t); o != "" {
+		return o, r
+	}
+	return outcome, ""
 }
 
 // logIgnored logs each named label of t whose name has no slug.
@@ -133,7 +153,7 @@ func cleanup(
 	for _, slug := range cleanupSlugs(t, pr, ev, label) {
 		tt := ev.Target
 		tt.Slug = slug
-		TeardownPR(ctx, api, tt, reason)
+		TeardownPR(ctx, api, tt, reason, triggerWebhook)
 	}
 }
 
@@ -186,10 +206,11 @@ func movedReason(slug string) string {
 	return fmt.Sprintf("moved to preview `%s`", slug)
 }
 
-// refusedByHolder reports whether the PR must not be deployed to t.Slug: one
-// of its services is already pinned there by another PR (it is then told so),
-// or the preview can't be read. It reads nothing unless the PR is open and has
-// a target.
+// refusedByHolder reports whether the PR must not be deployed to t.Slug, as
+// the reconcile's outcome and reason: skipped when one of its services is
+// already pinned there by another PR (it is then told so), failed when the
+// preview can't be read, and "" when it is not refused. It reads nothing
+// unless the PR is open and has a target.
 func refusedByHolder(
 	ctx context.Context,
 	api ReconcileAPI,
@@ -198,28 +219,26 @@ func refusedByHolder(
 	t preview.Resolution,
 	services []string,
 	label string,
-) bool {
+) (string, string) {
 	if !pr.Open || t.Slug == "" {
-		return false
+		return "", ""
 	}
 	vals, _, err := api.GetPreview(ctx, t.Slug)
 	if errors.Is(err, gitops.ErrNotFound) {
-		return false
+		return "", ""
 	}
 	if err != nil {
-		reconcileFailed(ctx, ev, err)
-		return true
+		return reconcileFailed(ctx, ev, err)
 	}
 	service, holder, held := heldBy(vals, services, ev.Target)
 	if !held {
-		return false
+		return "", ""
 	}
 	body := preview.BuildServiceHeldSummary(t.Slug, service, holder, label)
 	if upsertErr := api.UpsertPRComment(ctx, ev.Owner, ev.Repo, ev.Number, body); upsertErr != nil {
 		conflictCommentFailed(ctx, ev, upsertErr)
 	}
-	reconcileSkipped(ctx, ev, "service held by another pr", slog.String("holder", holder))
-	return true
+	return reconcileSkipped(ctx, ev, "service held by another pr", slog.String("holder", holder))
 }
 
 // heldBy returns the first entry of vals, in file order, that pins one of
@@ -241,7 +260,9 @@ func heldBy(vals *preview.PreviewValues, services []string, self Target) (string
 	return "", "", false
 }
 
-// postLabelConflict tells an open PR whose named labels conflict to keep one.
+// postLabelConflict tells an open PR whose named labels conflict to keep one,
+// and returns the skipped outcome and its reason. It returns "" when there is
+// no conflict.
 func postLabelConflict(
 	ctx context.Context,
 	api TeardownAPI,
@@ -249,15 +270,15 @@ func postLabelConflict(
 	pr *gitops.PullRequest,
 	label string,
 	t preview.Resolution,
-) {
+) (string, string) {
 	if !pr.Open || !t.Conflict {
-		return
+		return "", ""
 	}
 	body := preview.BuildLabelConflictSummary(label, t.NamedLabels)
 	if err := api.UpsertPRComment(ctx, ev.Owner, ev.Repo, ev.Number, body); err != nil {
 		conflictCommentFailed(ctx, ev, err)
 	}
-	reconcileSkipped(ctx, ev, "conflicting preview labels")
+	return reconcileSkipped(ctx, ev, "conflicting preview labels")
 }
 
 // payloadTeardown tears down a closed PR from its payload alone, after err
@@ -282,7 +303,7 @@ func payloadTeardown(ctx context.Context, api TeardownAPI, ev Event, label strin
 	for _, slug := range slugs {
 		t := ev.Target
 		t.Slug = slug
-		TeardownPR(ctx, api, t, PRClosedReason)
+		TeardownPR(ctx, api, t, PRClosedReason, triggerWebhook)
 	}
 }
 
@@ -311,6 +332,8 @@ func previewLabel(name, label string) bool {
 
 // deployServices deploys each of services, in order, at pr's head SHA in the
 // preview slug. A failed service is logged and the next one is still deployed.
+// It returns outcomeDeployed when at least one service write succeeded, and
+// outcomeFailed otherwise.
 func deployServices(
 	ctx context.Context,
 	api DeployAPI,
@@ -319,7 +342,8 @@ func deployServices(
 	ev Event,
 	pr *gitops.PullRequest,
 	slug string,
-) {
+) string {
+	outcome := outcomeFailed
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	for _, service := range services {
 		attrs := func(extra ...any) []any {
@@ -350,15 +374,19 @@ func deployServices(
 				attrs(slog.String("commit_sha", pr.HeadSHA), slog.String("err", err.Error()))...)
 			continue
 		}
+		outcome = outcomeDeployed
 		slog.InfoContext(ctx, "preview deploy",
 			attrs(slog.String("commit_sha", pr.HeadSHA), slog.String("gitops_commit_url", result.CommitURL))...)
 		if fanErr != nil {
 			slog.WarnContext(ctx, "preview deploy comment failed", attrs(slog.String("err", fanErr.Error()))...)
 		}
 	}
+	return outcome
 }
 
-func reconcileSkipped(ctx context.Context, ev Event, reason string, extra ...slog.Attr) {
+// reconcileSkipped logs a skipped reconcile and returns the skipped outcome
+// with reason.
+func reconcileSkipped(ctx context.Context, ev Event, reason string, extra ...slog.Attr) (string, string) {
 	args := []any{
 		slog.String("repo", ev.FullName),
 		slog.Int("pr_number", ev.Number),
@@ -369,6 +397,7 @@ func reconcileSkipped(ctx context.Context, ev Event, reason string, extra ...slo
 		args = append(args, a)
 	}
 	slog.InfoContext(ctx, "preview reconcile skipped", args...)
+	return outcomeSkipped, reason
 }
 
 func conflictCommentFailed(ctx context.Context, ev Event, err error) {
@@ -379,10 +408,12 @@ func conflictCommentFailed(ctx context.Context, ev Event, err error) {
 	)
 }
 
-func reconcileFailed(ctx context.Context, ev Event, err error) {
+// reconcileFailed logs a failed reconcile and returns the failed outcome.
+func reconcileFailed(ctx context.Context, ev Event, err error) (string, string) {
 	slog.ErrorContext(ctx, "preview reconcile failed",
 		slog.String("repo", ev.FullName),
 		slog.Int("pr_number", ev.Number),
 		slog.String("err", err.Error()),
 	)
+	return outcomeFailed, ""
 }

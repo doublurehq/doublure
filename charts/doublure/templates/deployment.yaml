@@ -30,8 +30,23 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
           env:
             {{- include "doublure.env" . | nindent 12 }}
+            - name: METRICS_ADDR
+              value: {{ ternary (printf ":%v" .Values.metrics.port) "" .Values.metrics.enabled | quote }}
+            {{- with .Values.cleanup.interval }}
+            - name: CLEANUP_INTERVAL
+              value: {{ . | quote }}
+            {{- with $.Values.cleanup.ttl }}
+            - name: CLEANUP_TTL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

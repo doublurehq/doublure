@@ -12,8 +12,37 @@ import (
 // PRClosedReason is the teardown reason for a closed (or merged) PR.
 const PRClosedReason = "PR closed"
 
-// TeardownAPI is the subset of gitops.Client used by TeardownPR.
+// Teardown triggers, the trigger label of Recorder.Teardown.
+const (
+	triggerWebhook = "webhook"
+	triggerSweep   = "sweep"
+)
+
+// Teardown results, the result label of Recorder.Teardown.
+const (
+	teardownError    = "error"
+	teardownNoop     = "noop"
+	teardownDeleted  = "deleted"
+	teardownUnpinned = "unpinned"
+)
+
+// Recorder records lifecycle outcomes. *metrics.Metrics implements it; a nil
+// one records nothing.
+type Recorder interface {
+	// Reconcile records one ReconcilePR outcome and, when skipped, its reason.
+	Reconcile(outcome, reason string)
+	// Teardown records one teardown of a PR from a preview.
+	Teardown(trigger, result string)
+	// SweepListed records the number of previews a sweep listed.
+	SweepListed(n int)
+	// SweepDeleted records one preview deleted by a sweep rule.
+	SweepDeleted(rule string)
+}
+
+// TeardownAPI is the subset of gitops.Client used by TeardownPR, plus the
+// Recorder.
 type TeardownAPI interface {
+	Recorder
 	TeardownPreviewWithRetry(
 		ctx context.Context,
 		slug, owner, repo string,
@@ -36,22 +65,24 @@ type Target struct {
 // TeardownPR unpins the PR from its preview (or deletes the preview when no pin
 // remains), then edits the PR's comment, which states reason, and, when the
 // preview survives, refreshes the remaining PRs' summaries. Comment failures
-// are logged and never undo the teardown.
-func TeardownPR(ctx context.Context, api TeardownAPI, tt Target, reason string) {
-	teardown(ctx, api, tt, reason, true)
+// are logged and never undo the teardown. The teardown is recorded once, with
+// trigger.
+func TeardownPR(ctx context.Context, api TeardownAPI, tt Target, reason, trigger string) {
+	teardown(ctx, api, tt, reason, trigger, true)
 }
 
 // unpinOnly does what TeardownPR does but leaves the PR's comment alone, for a
-// PR whose comment shows where it lives now.
+// PR whose comment shows where it lives now. Only the sweep unpins this way.
 func unpinOnly(ctx context.Context, api TeardownAPI, tt Target, reason string) {
-	teardown(ctx, api, tt, reason, false)
+	teardown(ctx, api, tt, reason, triggerSweep, false)
 }
 
 // teardown is TeardownPR, which edits the PR's comment only when commentPR is
 // true.
-func teardown(ctx context.Context, api TeardownAPI, tt Target, reason string, commentPR bool) {
+func teardown(ctx context.Context, api TeardownAPI, tt Target, reason, trigger string, commentPR bool) {
 	result, err := api.TeardownPreviewWithRetry(ctx, tt.Slug, tt.Owner, tt.Repo, tt.Number)
 	if err != nil {
+		api.Teardown(trigger, teardownError)
 		slog.ErrorContext(ctx, "preview teardown failed",
 			slog.String("slug", tt.Slug),
 			slog.String("repo", tt.FullName),
@@ -61,6 +92,7 @@ func teardown(ctx context.Context, api TeardownAPI, tt Target, reason string, co
 		return
 	}
 	if len(result.Removed) == 0 {
+		api.Teardown(trigger, teardownNoop)
 		slog.InfoContext(ctx, "preview teardown skipped",
 			slog.String("slug", tt.Slug),
 			slog.String("repo", tt.FullName),
@@ -68,6 +100,11 @@ func teardown(ctx context.Context, api TeardownAPI, tt Target, reason string, co
 			slog.String("reason", "no preview or no matching service"),
 		)
 		return
+	}
+	if result.Deleted {
+		api.Teardown(trigger, teardownDeleted)
+	} else {
+		api.Teardown(trigger, teardownUnpinned)
 	}
 	slog.InfoContext(ctx, "preview teardown",
 		slog.String("slug", tt.Slug),

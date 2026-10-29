@@ -9,8 +9,10 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v71/github"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/doublurehq/doublure/internal/gitops"
+	"github.com/doublurehq/doublure/internal/metrics"
 )
 
 const (
@@ -402,5 +404,46 @@ func TestJobs_TimeoutStartsAfterLock(t *testing.T) {
 	if fg.capturedSlug != "feature-pricing" || fg.capturedInputs.CommitSha != fetchedSHA {
 		t.Errorf("deployed to %q at %q, want feature-pricing at %q: job 2's timeout ran while it waited for the lock",
 			fg.capturedSlug, fg.capturedInputs.CommitSha, fetchedSHA)
+	}
+}
+
+func TestReconcile_RecordsMetrics(t *testing.T) {
+	m := metrics.New()
+	s, _ := newTeardownServer(t, reconcileFake(), WithMetrics(m))
+	deliver(t, s, labelEvent("labeled", "preview", "preview"))
+
+	expected := `
+# HELP doublure_reconciles_total Pull request reconciles, by outcome.
+# TYPE doublure_reconciles_total counter
+doublure_reconciles_total{outcome="deployed"} 1
+`
+	err := testutil.GatherAndCompare(m.Gatherer(), strings.NewReader(expected), "doublure_reconciles_total")
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestGo_TrackedByWaitBackground(t *testing.T) {
+	s, _ := newTeardownServer(t, reconcileFake())
+	release := make(chan struct{})
+	done := make(chan struct{})
+	s.Go(func() {
+		<-release
+		close(done)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), quiet)
+	defer cancel()
+	if err := s.WaitBackground(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitBackground before release = %v, want deadline exceeded", err)
+	}
+	close(release)
+	if err := s.WaitBackground(context.Background()); err != nil {
+		t.Fatalf("WaitBackground: %v", err)
+	}
+	select {
+	case <-done:
+	default:
+		t.Error("WaitBackground returned before f finished")
 	}
 }

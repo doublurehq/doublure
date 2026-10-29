@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	gh "github.com/google/go-github/v71/github"
 )
@@ -14,6 +15,22 @@ type installationEvent interface {
 	GetInstallation() *gh.Installation
 }
 
+// webhookEvent maps a verified X-Github-Event value to the closed set of the
+// event label of the webhook deliveries metric.
+func webhookEvent(eventType string) string {
+	switch eventType {
+	case "ping", "installation", "installation_repositories", "pull_request":
+		return eventType
+	}
+	return "other"
+}
+
+// countDelivery records a delivery answered with status. event is the
+// event label: webhookEvent of a verified delivery, or "unverified".
+func (s *Server) countDelivery(event string, status int) {
+	s.metrics.WebhookDelivery(event, strconv.Itoa(status))
+}
+
 // handleWebhook validates the signature, parses the payload into a typed
 // event, checks that it comes from the configured installation, and
 // dispatches to a per-event handler. Deliveries from any other installation,
@@ -21,7 +38,9 @@ type installationEvent interface {
 // Parse and dispatch failures are logged and answered with 200: the delivery
 // is authentic and there is nothing to re-queue, so a non-2xx would only flag
 // it as failed in Recent Deliveries. GitHub does not automatically redeliver
-// failed deliveries.
+// failed deliveries. Every delivery is counted with its status; its event is
+// "unverified" until the signature is checked, since X-Github-Event is not
+// covered by the signature.
 func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	eventType := r.Header.Get("X-Github-Event")
 	ctx := r.Context()
@@ -35,21 +54,24 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("event", eventType),
 			slog.String("remote_addr", r.RemoteAddr),
 		)
+		s.countDelivery("unverified", http.StatusUnauthorized)
 		http.Error(w, "invalid signature", http.StatusUnauthorized)
 		return
 	}
+	event := webhookEvent(eventType)
 
-	event, err := s.webhook.ParseEvent(eventType, payload)
+	parsed, err := s.webhook.ParseEvent(eventType, payload)
 	if err != nil {
 		slog.ErrorContext(ctx, "webhook parse failed",
 			slog.String("event", eventType), slog.String("err", err.Error()))
+		s.countDelivery(event, http.StatusOK)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	if eventType != "ping" {
 		var inst *gh.Installation
-		if ie, ok := event.(installationEvent); ok {
+		if ie, ok := parsed.(installationEvent); ok {
 			inst = ie.GetInstallation()
 		}
 		if inst.GetID() == 0 || inst.GetID() != s.allowedInstallationID {
@@ -58,6 +80,7 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 				slog.Int64("installation_id", inst.GetID()),
 				slog.String("account", inst.GetAccount().GetLogin()),
 			)
+			s.countDelivery(event, http.StatusForbidden)
 			http.Error(w, "installation not allowed", http.StatusForbidden)
 			return
 		}
@@ -71,10 +94,11 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.ErrorContext(ctx, "webhook handler panicked",
 				slog.String("event", eventType), slog.Any("panic", rec))
 		}
+		s.countDelivery(event, http.StatusOK)
 		w.WriteHeader(http.StatusOK)
 	}()
 
-	s.dispatchEvent(ctx, eventType, event)
+	s.dispatchEvent(ctx, eventType, parsed)
 }
 
 // dispatchEvent routes a parsed event to its handler. Unknown event types are

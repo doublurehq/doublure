@@ -145,6 +145,8 @@ doublure never reads, writes or drops data stores.
 ```
 GET  /healthz
 
+GET  /metrics               # on METRICS_ADDR only (default :9090), not on LISTEN_ADDR
+
 POST /v1/deploy
   Authorization: Bearer $DOUBLURE_DEPLOY_TOKEN
   { "service", "head_ref", "commit_sha", "pr_author", "pr_url", "pr_number", "workflow_run_url" }
@@ -221,7 +223,7 @@ Deleting the file drops `previews/<slug>/` from the git directory generator, and
 
 ## Cleanup sweep
 
-`doublure cleanup` runs once per CronJob schedule (hourly by default). It lists `previews/*` and applies to each preview the first matching rule:
+The sweep runs in the server every `CLEANUP_INTERVAL` when it is set, starting one interval after startup; runs never overlap and shutdown cancels a run in progress. Otherwise `doublure cleanup` runs it once per CronJob schedule (hourly by default). Use one or the other: both run the same idempotent sweep, so running both only wastes work. Only the in-server sweep exports the sweep metrics. The sweep lists `previews/*` and applies to each preview the first matching rule:
 
 1. **No pinned service**: the file is deleted (`chore(preview): delete <slug> preview`). No comment.
 2. **Expired** (only when `CLEANUP_TTL` is set): the newest `updated-at` of the pinned services is older than `CLEANUP_TTL`. The file is deleted (`chore(preview): expire <slug> preview`) and its open PRs get a comment saying the preview expired. A pinned service without a parseable `updated-at` never counts, so such a preview never expires.
@@ -249,10 +251,42 @@ GITHUB_INSTALLATION_ID
 GITOPS_REPO                 # owner/repo
 DOUBLURE_DEPLOY_TOKEN
 LISTEN_ADDR                 # default :8080
-CLEANUP_TTL                 # cleanup only, optional: Go duration (e.g. 168h); unset disables expiry
+METRICS_ADDR                # default :9090 when unset; set to "" to disable /metrics
+CLEANUP_INTERVAL            # serve, optional: Go duration of at least 1m (e.g. 1h); unset disables the in-server sweep
+CLEANUP_TTL                 # cleanup, and serve when CLEANUP_INTERVAL is set, optional: Go duration (e.g. 168h); unset disables expiry
 ```
 
 GitHub App permissions: Contents R/W, Pull requests W, Metadata R. Subscribed event: `pull_request` (installation events are delivered automatically).
+
+## Metrics
+
+`GET /metrics` serves Prometheus metrics on `METRICS_ADDR`, a listener separate from `LISTEN_ADDR`, so the Ingress never exposes it. The chart adds a `metrics` port to the Service and, with `metrics.serviceMonitor.enabled`, a ServiceMonitor.
+
+### Metric list
+
+Every label has a closed set of values. Go runtime (`go_*`) and process (`process_*`) metrics are exported too.
+
+| Metric | Type | Labels | |
+|---|---|---|---|
+| `doublure_webhook_deliveries_total` | counter | `event`, `status` | Webhook deliveries. `event` is `ping`, `installation`, `installation_repositories`, `pull_request` or `other` once the signature is verified, `unverified` before. `status` is the HTTP status: `200`, `401` or `403`. |
+| `doublure_reconciles_total` | counter | `outcome` | One per pull request reconcile: `failed` (catalog, PR or preview read error, or every service write failed), else `skipped`, else `deployed` (a service write succeeded), else `torn_down`. |
+| `doublure_reconcile_skips_total` | counter | `reason` | Skipped reconciles by reason: `other label`, `not labeled`, `repo not in catalog`, `fork pr`, `service held by another pr`, `conflicting preview labels`. |
+| `doublure_teardowns_total` | counter | `trigger`, `result` | Teardowns of a PR from a preview. `trigger` is `webhook` or `sweep`; `result` is `deleted`, `unpinned`, `noop` (nothing pinned) or `error`. |
+| `doublure_gitops_operation_duration_seconds` | histogram | `op`, `result` | Duration of gitops `write` and `teardown` operations, 409 retries included; `result` is `ok` or `error`. |
+| `doublure_sweep_runs_total` | counter | `result` | In-server sweep runs, `ok` or `error`. A run cancelled by shutdown is not counted. |
+| `doublure_sweep_last_success_timestamp_seconds` | gauge | | Unix time of the last successful in-server sweep. |
+| `doublure_sweep_previews_deleted_total` | counter | `rule` | Previews deleted by the sweep: `no_pin` (rule 1) or `ttl` (rule 2). |
+| `doublure_previews` | gauge | | Previews listed by the last in-server sweep, minus those it deleted. |
+
+`doublure_previews` and `doublure_sweep_last_success_timestamp_seconds` are always exported and read 0 until the first in-server sweep: with the CronJob alone they stay at 0.
+
+### Spin-up endpoint
+
+Added with the Argo CD notifications callback.
+
+### Dashboard
+
+Added with the Argo CD notifications callback.
 
 ## Demo setup
 

@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/doublurehq/doublure/internal/metrics"
 )
 
 // WebhookValidator validates GitHub webhook signatures and parses payloads
@@ -18,9 +20,28 @@ type WebhookValidator interface {
 	ParseEvent(eventType string, payload []byte) (any, error)
 }
 
+// lifecycleAPI is gitopsAPI with the metrics recorder lifecycle expects. A
+// nil *metrics.Metrics records nothing.
+type lifecycleAPI struct {
+	gitopsAPI
+	*metrics.Metrics
+}
+
+// Option configures a Server built by NewServer.
+type Option func(*Server)
+
+// WithMetrics records webhook deliveries and lifecycle outcomes in m.
+func WithMetrics(m *metrics.Metrics) Option {
+	return func(s *Server) {
+		s.metrics = m
+	}
+}
+
 type Server struct {
 	webhook     WebhookValidator
 	gitops      gitopsAPI
+	metrics     *metrics.Metrics
+	lifecycle   lifecycleAPI
 	deployToken string
 	// allowedInstallationID is the only GitHub App installation whose webhook
 	// deliveries are dispatched.
@@ -35,7 +56,13 @@ type Server struct {
 	jobTimeout time.Duration
 }
 
-func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string, allowedInstallationID int64) *Server {
+func NewServer(
+	webhook WebhookValidator,
+	gitops gitopsAPI,
+	deployToken string,
+	allowedInstallationID int64,
+	opts ...Option,
+) *Server {
 	s := &Server{
 		webhook:               webhook,
 		gitops:                gitops,
@@ -43,6 +70,10 @@ func NewServer(webhook WebhookValidator, gitops gitopsAPI, deployToken string, a
 		allowedInstallationID: allowedInstallationID,
 		jobTimeout:            reconcileTimeout,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	s.lifecycle = lifecycleAPI{gitopsAPI: gitops, Metrics: s.metrics}
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -64,6 +95,12 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// Go runs f in the background, tracked by WaitBackground. Unlike reconciles,
+// f does not wait for other background jobs.
+func (s *Server) Go(f func()) {
+	s.bg.Go(f)
 }
 
 // WaitBackground blocks until every background job has finished. It

@@ -8,7 +8,7 @@ From an empty cluster to a first preview. Contract details live in [ARCHITECTURE
 - An ingress controller with TLS for the doublure webhook URL (GitHub calls it over https), plus wildcard DNS when preview URLs are used.
 - A GitHub gitops repo, and service repos whose CI pushes images tagged with the full commit SHA, all under the one account (user or org) the App is installed on.
 - Service images pullable from the preview namespaces: `preview-env` creates each namespace fresh, with no `imagePullSecrets`. Use public images, node-level registry credentials, or pull secrets set by the service chart.
-- `kubectl`, Helm 3.8+ and Go 1.25+ (for the `doublure` CLI).
+- `kubectl`, Helm 3.8+ and Go 1.26+ (for the `doublure` CLI).
 
 ## 2. Gitops repo
 
@@ -111,13 +111,14 @@ helm install doublure oci://ghcr.io/doublurehq/charts/doublure -n doublure \
   --set config.gitopsRepo="$GITOPS_REPO" \
   --set existingSecret=doublure \
   --set ingress.enabled=true --set ingress.host=doublure.example.com \
-  --set cleanup.enabled=true \
+  --set cleanup.interval=1h \
   -f values.yaml
 ```
 
 - Pin `--version` in production. The image tag defaults to the chart `appVersion`.
 - The Ingress also exposes `POST /v1/deploy`, the manual trigger, protected by the `deploy-token` bearer token (see [README](../README.md)).
 - `cleanup.ttl` (e.g. `168h`) is optional: it also deletes previews with no deploy for that long.
+- `cleanup.interval=1h` runs the cleanup sweep in the server, which exports its metrics (with the Prometheus Operator, scrape them with `metrics.serviceMonitor.enabled=true` and `metrics.serviceMonitor.labels` matching its selector, e.g. `release: <kube-prometheus-stack release>`); `cleanup.enabled=true`, an hourly CronJob without metrics, is the alternative, not to combine with it.
 - Keep `replicaCount: 1`.
 
 Once the Secret exists, delete the local `.env` and PEM.

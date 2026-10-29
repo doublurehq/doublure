@@ -190,3 +190,53 @@ func TestLoad_PrivateKeyPathTakesPrecedence(t *testing.T) {
 		t.Errorf("PrivateKey = %q, want %q (file should take precedence)", cfg.PrivateKey, "file-key")
 	}
 }
+
+// loadWithMetricsAddr loads a valid config with METRICS_ADDR set to value, or
+// unset when set is false.
+func loadWithMetricsAddr(t *testing.T, set bool, value string) (*config.Config, error) {
+	t.Helper()
+	setEnv(t, validEnv())
+	t.Setenv("METRICS_ADDR", value)
+	if !set {
+		if err := os.Unsetenv("METRICS_ADDR"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return config.Load()
+}
+
+func TestLoad_MetricsAddr(t *testing.T) {
+	cases := []struct {
+		name  string
+		set   bool
+		value string
+		want  string
+	}{
+		{name: "unset defaults", want: ":9090"},
+		{name: "empty disables", set: true, value: "", want: ""},
+		{name: "port only", set: true, value: ":19090", want: ":19090"},
+		{name: "host and port", set: true, value: "127.0.0.1:9091", want: "127.0.0.1:9091"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := loadWithMetricsAddr(t, tc.set, tc.value)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.MetricsAddr != tc.want {
+				t.Errorf("MetricsAddr = %q, want %q", cfg.MetricsAddr, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoad_InvalidMetricsAddr(t *testing.T) {
+	for _, value := range []string{"9090", ":", "host:abc", ":99999"} {
+		t.Run(value, func(t *testing.T) {
+			_, err := loadWithMetricsAddr(t, true, value)
+			if want := `METRICS_ADDR must be host:port, got "` + value + `"`; err == nil || err.Error() != want {
+				t.Fatalf("err = %v, want %q", err, want)
+			}
+		})
+	}
+}
