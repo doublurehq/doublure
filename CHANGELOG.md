@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/doublurehq/doublure/compare/v0.11.0...v0.11.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **charts:** fail preview-env on non-string serviceCharts values ([#44](https://github.com/doublurehq/doublure/issues/44)) ([9730aa4](https://github.com/doublurehq/doublure/commit/9730aa442453e472a103a653faa807c4c6500ad0))
+
 ## [0.11.0](https://github.com/doublurehq/doublure/compare/v0.10.0...v0.11.0) (2026-10-29)
 
 
