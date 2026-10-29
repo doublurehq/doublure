@@ -301,7 +301,7 @@ doublure never reads the cluster, so Argo CD's notifications controller tells it
 
 ### Dashboard
 
-Added with the Argo CD notifications callback.
+[`charts/doublure/dashboards/doublure.json`](../charts/doublure/dashboards/doublure.json) is a Grafana dashboard (uid `doublure`) over these metrics: live previews, deploys and teardowns per hour, spin-up p50/p90 and p90 by service, zombies swept, reconcile skips by reason, webhook deliveries by status, gitops operation p90 and the last successful sweep. It picks its Prometheus data source through a `datasource` variable. With `dashboard.enabled`, the chart renders it as a ConfigMap labelled `dashboard.labels` (default `grafana_dashboard: "1"`), which the Grafana sidecar of kube-prometheus-stack loads; the JSON also imports on its own. Live previews and last successful sweep need `cleanup.interval`, and the spin-up panels need the Argo CD notifications callback.
 
 ## Demo setup
 

@@ -146,6 +146,22 @@ Applying it while pinned previews exist produces one-off spin-up samples for the
 
 Check: `doublure_argocd_events_total` increases after the next labeled PR. Without Helm, see the file's comments. To remove the setup later, revert the Argo CD release without the file, then delete the token, which Helm leaves in the Secret: `kubectl -n argocd patch secret argocd-notifications-secret --type=json -p '[{"op":"remove","path":"/data/doublure-webhook-token"}]'`. Details: ARCHITECTURE [Spin-up endpoint](ARCHITECTURE.md#spin-up-endpoint).
 
+### Monitoring (optional)
+
+With the Prometheus Operator (e.g. kube-prometheus-stack), add to the `helm install` (or a `helm upgrade --reuse-values`):
+
+```bash
+  --set metrics.serviceMonitor.enabled=true \
+  --set metrics.serviceMonitor.labels.release=<kube-prometheus-stack release> \
+  --set dashboard.enabled=true
+```
+
+- `metrics.serviceMonitor.labels.release` must match the operator's `serviceMonitorSelector`; kube-prometheus-stack selects its own release name by default.
+- `dashboard.enabled=true` renders the Grafana dashboard as a ConfigMap labelled `grafana_dashboard: "1"`, which the Grafana sidecar of kube-prometheus-stack loads from any namespace. Change the label with `dashboard.labels` if your sidecar uses another one.
+- Without the sidecar, import [`charts/doublure/dashboards/doublure.json`](../charts/doublure/dashboards/doublure.json) as a Grafana dashboard and pick your Prometheus data source.
+
+Live previews and last successful sweep need `cleanup.interval`; the spin-up panels need [Spin-up time](#spin-up-time-optional). Details: ARCHITECTURE [Dashboard](ARCHITECTURE.md#dashboard).
+
 ## 7. Service repos
 
 - Create the `preview` label (or your custom `preview.label`) in each service repo, e.g. `gh label create preview --repo <owner>/<repo>`. Create any `preview:<name>` label yourself in each repo too: doublure never creates labels.
