@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/doublurehq/doublure/compare/v0.12.0...v0.13.0) (2026-10-29)
+
+
+### Features
+
+* add a grafana dashboard ([#51](https://github.com/doublurehq/doublure/issues/51)) ([99343f9](https://github.com/doublurehq/doublure/commit/99343f92800ace154405454d1cd214f1e88c3669))
+
 ## [0.12.0](https://github.com/doublurehq/doublure/compare/v0.11.1...v0.12.0) (2026-10-29)
 
 
