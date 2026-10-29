@@ -9,8 +9,7 @@ Shipped so far: [CHANGELOG.md](../CHANGELOG.md) and [GitHub releases](https://gi
 | # | Change | Goal | Depends on |
 |---|---|---|---|
 | 6 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | — |
-| 7 | **Install guide**: GitHub App, chart install, gitops repo contract, preview label | deployable by anyone | 9 |
-| 9 | **Bring your own chart**: per-service default branch, chart path, image-tag parameter and ingress-host parameter, instead of `main`, `k8s/`, `app.image.tag` and `app.ingress.host`, so existing company charts work unchanged | fits existing repos | — |
+| 7 | **Install guide**: GitHub App, chart install, gitops repo contract, preview label | deployable by anyone | — |
 | 11 | **E2E demo**: agent-opened PR → preview → tests against preview URL → merge → teardown | validate AI output | all |
 
 ## Non-goals
@@ -22,3 +21,4 @@ Multi-tenancy, hosted control plane, in-cluster agent, billing, SSO, queue/worke
 - Scale-to-zero / off-hours pause for previews
 - Check the image exists in the registry before writing gitops
 - Contract tests against preview APIs
+- Image tag format: derive the image tag from the commit SHA (e.g. sha-<short>) for CI that does not tag with the full SHA

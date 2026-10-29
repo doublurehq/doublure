@@ -242,7 +242,7 @@ type WriteResult struct {
 //
 // On a fresh create the full catalog is materialized via BuildPreviewValues so
 // the resulting values.yaml lists every service (the triggering one pinned to
-// commitSha, the rest tracking main).
+// commitSha, the rest tracking their branch).
 //
 // After every build or merge, preview.ApplyHosts sets each entry's host from
 // urls, so the written file carries the hosts of the current catalog.

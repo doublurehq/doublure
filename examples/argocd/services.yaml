@@ -3,6 +3,17 @@ serviceRepos:
   backend-2: "https://github.com/doublurehq/demo-backend-2.git"
   front:     "https://github.com/doublurehq/demo-front.git"
 
+# Per-service chart settings (optional, preview-env 0.4.0 or later): every key
+# is optional and defaults to the value shown in its comment.
+# serviceCharts:
+#   backend-1:
+#     branch: master              # default "main": branch of unpinned services
+#     path: deploy/helm           # default "k8s/": chart path in the service repo
+#     imageTagParam: image.tag    # default "app.image.tag": Helm parameter set to the image tag
+#     hostParam: ingress.hostname # default "app.ingress.host": Helm parameter set to the preview host
+#     valueFiles:                 # default none: extra values files, relative to path
+#       - values-preview.yaml
+
 # Per-preview URLs (optional): each exposed service gets the ingress host
 # <service>-<slug>.<domain> and a link in the PR comment.
 # preview:

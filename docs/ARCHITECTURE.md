@@ -11,7 +11,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
    └──────────────── PR comment (fan-out) ◄───────────────────────────────────────────────────┘                  ▼
                                      ArgoCD ApplicationSet (git dir generator: previews/*)
                                        └─ preview-env chart → AppProject + Namespace + one Application per service
-                                            └─ service chart (k8s/ in each service repo) at commitSha or main
+                                            └─ service chart (path per serviceCharts, default k8s/) at commitSha or its branch (default main)
 
  label removed or pull_request closed ──► doublure serve (async) ── unpins the PR's services, or deletes previews/<slug>/values.yaml ──► ArgoCD prunes
  doublure cleanup (CronJob) ── deletes stale previews/<slug>/, unpins closed PRs, and open PRs whose label moved, conflicts or is gone ──► ArgoCD prunes
@@ -26,13 +26,13 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
 | `doublure bootstrap-app` / `verify-app` | this repo | Create a GitHub App via the manifest flow / check credentials |
 | `preview-env` chart | this repo, [`charts/preview-env`](../charts/preview-env) | Renders AppProject, Namespace, one ArgoCD Application per service; Application annotations `preview.doublure.dev/*` carry the PR metadata |
 | ApplicationSet | this repo, [`examples/argocd`](../examples/argocd) | Git directory generator on `previews/*` |
-| Service chart | each service repo `k8s/` (uses the `app` chart, [`charts/app`](../charts/app)) | Image tag = `commitSha` or `$ARGOCD_APP_REVISION` |
+| Service chart | each service repo, at `k8s/` unless `serviceCharts` sets `path` (uses the `app` chart, [`charts/app`](../charts/app)) | Image tag = `commitSha` or `$ARGOCD_APP_REVISION` |
 | `doublure` chart | this repo, [`charts/doublure`](../charts/doublure) | Installs `doublure serve` (Deployment, Service, optional Ingress) and the cleanup CronJob (off by default) |
 
 ## Gitops repo contract
 
 ```
-services.yaml                    # serviceRepos: { <service>: <git url> }, optional preview block
+services.yaml                    # serviceRepos: { <service>: <git url> }, optional preview block, optional serviceCharts block
 previews/<slug>/values.yaml      # written by doublure
 ```
 
@@ -41,6 +41,14 @@ previews/<slug>/values.yaml      # written by doublure
 serviceRepos:
   backend-1: https://github.com/acme/backend-1.git
   front: https://github.com/acme/front.git
+serviceCharts:                  # optional: per-service chart settings, every key optional
+  backend-1:
+    branch: master              # default "main": targetRevision of unpinned services, and the PR-comment badge
+    path: deploy/helm           # default "k8s/": chart path in the service repo
+    imageTagParam: image.tag    # default "app.image.tag": Helm parameter set to the image tag
+    hostParam: ingress.hostname # default "app.ingress.host": Helm parameter set to the preview host
+    valueFiles:                 # default none: extra values files, applied in order
+      - values-preview.yaml
 preview:                        # optional: preview label and per-preview URLs (URLs off without domain)
   label: preview                # optional, default "preview": the PR label that creates the preview
   domain: 127.0.0.1.nip.io      # lowercase bare domain: no scheme, no path, no leading or trailing dot
@@ -51,10 +59,11 @@ preview:                        # optional: preview label and per-preview URLs (
       path: /docs               # optional, default "/": PR-comment link only
 ```
 
-`services.yaml` is a value file of the `preview-env` chart and is read by doublure on every deploy. A malformed `preview` block fails `/v1/deploy` and makes every reconcile log `preview reconcile failed`, with an error naming the offending key. An `expose` entry for a service missing from `serviceRepos` is ignored.
+`services.yaml` is a value file of the `preview-env` chart and is read by doublure on every deploy. A malformed `preview` or `serviceCharts` block fails `/v1/deploy` and makes every reconcile log `preview reconcile failed`, with an error naming the offending key. An `expose` entry for a service missing from `serviceRepos` is ignored.
 
 - `preview.label` must be a non-empty string; it is matched case-insensitively, like GitHub label names. `<label>:<name>` labels name the preview (see the label flow below).
 - Every `serviceRepos` value must be a string. A PR's repo maps to the services whose URL is `https://github.com/<owner>/<repo>`, compared case-insensitively, with or without a trailing `/` or `.git`. Other URL forms (SSH, GitHub Enterprise) never match, so the label flow never deploys those services.
+- Every `serviceCharts` key must be a service of `serviceRepos`, and unknown fields are rejected. A null entry, or a null field, uses the defaults. `branch`, `path`, `imageTagParam` and `hostParam` must be non-empty strings, and `valueFiles` a list of non-empty strings. doublure only uses `branch` (for the PR-comment badge); the chart reads every field. The block needs `preview-env` 0.4.0 or later and doublure 0.11.0 or later: an older chart ignores it and applies the defaults, and an older doublure neither validates it nor shows the branch.
 
 ```yaml
 # previews/feature-pricing/values.yaml
@@ -64,7 +73,7 @@ services:
     host: backend-1-feature-pricing.127.0.0.1.nip.io   # exposed services only: ingress host written by doublure
     metadata: { pr-author, pr-url, pr-number, created-at, updated-at, vcs.ref.name, cicd.pipeline.run.url }
                                 # cicd.pipeline.run.url is "" for label deploys
-  - name: backend-2             # no commitSha: tracks main
+  - name: backend-2             # no commitSha: tracks its branch (default main)
   - name: front
 ```
 
@@ -72,7 +81,7 @@ services:
 
 Each exposed service of a preview gets the host `<service>-<slug>.<domain>` (the `<service>-<slug>` label capped at 63 characters, see below). One wildcard DNS record (and, for TLS, one wildcard certificate) for `*.<domain>` covers every preview.
 
-- doublure writes the host into each exposed entry's `host` in `values.yaml`, and `preview-env` passes it to the service's Application as the Helm parameter `app.ingress.host`.
+- doublure writes the host into each exposed entry's `host` in `values.yaml`, and `preview-env` passes it to the service's Application as the Helm parameter `app.ingress.host` (or the service's `hostParam`).
 - doublure appends ` · [<host><path>](<scheme>://<host><path>)` to the service's line in the PR comment.
 
 `tls` only picks the link scheme; ingress TLS, the ingress class and annotations stay in the service chart. Services not in `expose` (non-HTTP services, for example) get no host and no link.
@@ -81,14 +90,14 @@ Length caps: a slug longer than 53 characters (Helm's release-name limit, which 
 
 Upgrade order: upgrade doublure (0.10.0 or later) first, then `preview-env` (0.3.0 or later). `preview-env` 0.3.0 reads only `host`, so an entry without it gets no ingress host. Preview files written by an older doublure carry no `host` until their next deploy write.
 
-## Pinned and main-tracking services
+## Pinned and branch-tracking services
 
 A preview runs each service in one of two modes, set by `commitSha` in `previews/<slug>/values.yaml`:
 
-- **Pinned** (`commitSha` set): the Application uses `targetRevision: <sha>` and `app.image.tag: <sha>`. It changes only when doublure writes a new SHA.
-- **Main-tracking** (no `commitSha`): the Application uses `targetRevision: main` and `app.image.tag: $ARGOCD_APP_REVISION`, which Argo CD resolves to the commit it syncs. It follows new commits on `main`.
+- **Pinned** (`commitSha` set): the Application uses `targetRevision: <sha>` and sets the image tag parameter (default `app.image.tag`) to `<sha>`. It changes only when doublure writes a new SHA.
+- **Branch-tracking** (no `commitSha`): the Application uses `targetRevision: <branch>` (default `main`) and sets the image tag parameter (default `app.image.tag`) to `$ARGOCD_APP_REVISION`, which Argo CD resolves to the commit it syncs. It follows new commits on that branch.
 
-A main-tracking service can briefly sit in `ImagePullBackOff`: when Argo CD syncs a new `main` commit before that commit's CI has pushed the image, the image tag does not exist yet. This is accepted because it resolves without intervention:
+A branch-tracking service can briefly sit in `ImagePullBackOff`: when Argo CD syncs a new commit on that branch before that commit's CI has pushed the image, the image tag does not exist yet. This is accepted because it resolves without intervention:
 
 - The kubelet keeps retrying the pull, with a back-off capped at 300 seconds, and the pod starts once the image is in the registry.
 - The Applications sync with `selfHeal: true`, and Argo CD polls Git every 3 minutes by default.
@@ -96,7 +105,7 @@ A main-tracking service can briefly sit in `ImagePullBackOff`: when Argo CD sync
 
 Alternatives considered, and why they were not chosen:
 
-- **doublure re-pins main-tracking services** to the new `main` SHA in every active preview once its image exists: removes the race, but every `main` build has to rewrite every preview, with concurrent writes to the same files.
+- **doublure re-pins branch-tracking services** to the branch's new SHA in every active preview once its image exists: removes the race, but every build of that branch has to rewrite every preview, with concurrent writes to the same files.
 - **Argo CD webhook from CI** after the image push, instead of polling: needs CI-to-cluster network access and an exposed Argo CD API, and does not help while Argo CD also polls.
 - **Argo CD Image Updater**: another controller with registry credentials and write-back config, built for tracking the latest tag rather than previews.
 - **Init container that waits for the image**: adds registry access and a wait to every service chart, and still delays startup.
@@ -107,14 +116,17 @@ References: [Helm build environment in Argo CD](https://argo-cd.readthedocs.io/e
 
 The `preview-env` chart ([`application.yaml`](../charts/preview-env/templates/application.yaml)) renders one Argo CD Application per service from the service's repo URL in `services.yaml`, and expects each service repo to provide:
 
-- A Helm chart at `k8s/`.
-- A `main` branch: main-tracking services use `targetRevision: main`.
-- A Helm parameter `app.image.tag`: the service chart declares the [`app`](../charts/app) chart as a dependency aliased `app`.
-- Images tagged with the full git commit SHA: pinned services use the PR head SHA (label flow) or the `commit_sha` sent to `/v1/deploy`, main-tracking services use `$ARGOCD_APP_REVISION`.
-- For services in `preview.expose`: ingress enabled and a Helm parameter `app.ingress.host` setting the ingress host. Otherwise the PR-comment link is dead.
-- A service whose image is not built per commit (for example a database) may ignore `app.image.tag`.
+- A Helm chart at `k8s/` by default, or at the service's `serviceCharts` `path`.
+- A `main` branch by default, or the service's `serviceCharts` `branch`: branch-tracking services use it as `targetRevision`.
+- A Helm parameter `app.image.tag` by default (the service chart declares the [`app`](../charts/app) chart as a dependency aliased `app`), or the service's `serviceCharts` `imageTagParam`.
+- Images tagged with the full git commit SHA: pinned services use the PR head SHA (label flow) or the `commit_sha` sent to `/v1/deploy`, branch-tracking services use `$ARGOCD_APP_REVISION`.
+- For services in `preview.expose`: ingress enabled and a Helm parameter setting the ingress host, `app.ingress.host` by default or the service's `serviceCharts` `hostParam`. Otherwise the PR-comment link is dead.
+- A service whose image is not built per commit (for example a database) may ignore the image tag parameter.
+- Extra values files, from the service's `serviceCharts` `valueFiles`, applied in order. Argo CD joins a relative path to the chart path and a path starting with `/` to the repo root; a missing file fails the sync.
 
-These values are fixed in the chart today; making them configurable is on the [roadmap](ROADMAP.md).
+`hostParam` is passed as a Helm `--set`, key verbatim. A list-indexed name such as `ingress.hosts[0].host` replaces the chart's default list, so the full list (with its `paths`) and `ingress.enabled: true` must come from a file in `valueFiles`; the parameter then only sets that element's field.
+
+Override them per service in `serviceCharts` (`preview-env` 0.4.0 or later); image tags must still be the full commit SHA.
 
 The ApplicationSet example sources `preview-env` from an OCI registry (`oci://` with `path: "."`), which requires Argo CD 3.1 or later.
 
@@ -171,7 +183,7 @@ Target preview: a label is **named** when it starts with `<label>:` (case-insens
 - No valid named label, and the plain label: the target is the slugified head branch.
 - Otherwise: no target.
 
-Several PRs, from different repos and branches, labeled `preview:pricing` share the preview `pricing`: each pins its own services, and the rest run at `main`. A named preview and a branch preview with the same slug are the same preview: `preview:main` joins the preview of a branch called `main`. doublure never creates labels: labels are per repo, so `preview:<name>` must be created in each repo.
+Several PRs, from different repos and branches, labeled `preview:pricing` share the preview `pricing`: each pins its own services, and the rest run at their branch (default `main`). A named preview and a branch preview with the same slug are the same preview: `preview:main` joins the preview of a branch called `main`. doublure never creates labels: labels are per repo, so `preview:<name>` must be created in each repo.
 
 The **cleanup set** of a reconcile is, deduplicated, without empty slugs, and without the target when the PR is deployed there: the slugified head branch, every named slug, and, on `unlabeled`, the removed label's slug (the head branch's for the plain label). Each is torn down with one reason, the first that applies:
 
@@ -203,7 +215,7 @@ Background reconciles run one at a time, in no guaranteed order; a reconcile rea
 
 A labeled PR with no push for longer than `CLEANUP_TTL` is expired by the sweeper and not recreated while the label stays: push, or remove and re-add the label, to recreate it. A missed `unlabeled` of a named label, or a label that moved, is unpinned by the sweeper; a missed `unlabeled` of the plain label at the branch slug still waits for close or TTL.
 
-Teardown flow: a reconcile tears the PR down from each slug of its cleanup set: the PR is closed (merged or not), lost its label (for example after `unlabeled`), has conflicting labels, or moved to another preview. A `closed` delivery whose reconcile can't read the catalog or the PR falls back to tearing down, as closed, the payload's head branch and the payload's named labels, logged as a warning, so a close still tears down when GitHub reads fail. For each slug (the slugified head branch or named label), doublure reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the PR: the entry goes back to a bare main-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The PR's comment is edited (or created) to say what was removed and why: `PR closed`, ``label `<label>` removed``, ``label `<label>:<name>` removed``, ``conflicting `<label>:` labels`` or ``moved to preview `<slug>` ``.
+Teardown flow: a reconcile tears the PR down from each slug of its cleanup set: the PR is closed (merged or not), lost its label (for example after `unlabeled`), has conflicting labels, or moved to another preview. A `closed` delivery whose reconcile can't read the catalog or the PR falls back to tearing down, as closed, the payload's head branch and the payload's named labels, logged as a warning, so a close still tears down when GitHub reads fail. For each slug (the slugified head branch or named label), doublure reads `previews/<slug>/values.yaml` and unpins every service whose `pr-url` points to the PR: the entry goes back to a bare branch-tracking `{name}`. If other pins remain, the file is updated and the remaining PRs' comments are refreshed; otherwise the file is deleted. Both writes use SHA optimistic locking + 409 retry, deciding update vs delete again on every retry. The PR's comment is edited (or created) to say what was removed and why: `PR closed`, ``label `<label>` removed``, ``label `<label>:<name>` removed``, ``conflicting `<label>:` labels`` or ``moved to preview `<slug>` ``.
 
 Deleting the file drops `previews/<slug>/` from the git directory generator, and the ApplicationSet deletes the preview's Application and its resources. This requires the ApplicationSet controller policy `sync` (the default) or `create-delete`; with `create-only` or `create-update` a deleted preview keeps running. Closes missed while doublure was down, and pins written by a deploy after the PR closed, are caught by the cleanup sweeper. A labeled PR whose branch was renamed after the deploy is unpinned from its old slug by the sweeper, without a comment; push to redeploy it at the new slug.
 

@@ -3,8 +3,8 @@
 #
 # services:
 #   - name: backend-1
-#     commitSha: "abc123"         # optional — pinned to commit SHA (used as targetRevision and image.tag)
-#     host: "backend-1-feature-pricing.example.com"   # optional, written by doublure for exposed services; becomes app.ingress.host
+#     commitSha: "abc123"         # optional — pinned to commit SHA (used as targetRevision and the image tag)
+#     host: "backend-1-feature-pricing.example.com"   # optional, written by doublure for exposed services; becomes the host parameter (default app.ingress.host)
 #     metadata:                    # optional — only present when service has a PR
 #       pr-author: "octocat"
 #       pr-url: "https://github.com/doublurehq/demo-backend-1/pull/42"
@@ -13,7 +13,7 @@
 #       updated-at: "2026-02-18T16:00:00Z"
 #       vcs.ref.name: "feature/add-pricing"
 #       cicd.pipeline.run.url: "https://github.com/doublurehq/demo-backend-1/actions/runs/12345"
-#   - name: backend-2              # no commitSha → tracks main, no metadata
+#   - name: backend-2              # no commitSha → tracks its branch (default main), no metadata
 #   - name: front
 
 services: []
@@ -47,7 +47,8 @@ serviceCharts: {}
 
 # Ingress hosts come from each service entry's host, written by doublure from
 # the preview block of the gitops repo's services.yaml, and are passed as the
-# Helm parameter app.ingress.host. An entry without host gets no ingress host.
+# Helm parameter app.ingress.host (or the service's serviceCharts hostParam).
+# An entry without host gets no ingress host.
 # The preview block is doublure's input; this chart does not read it:
 #
 # preview:
