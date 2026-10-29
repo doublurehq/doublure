@@ -43,8 +43,8 @@ notifications:
   triggers:
     # Fires once per Application revision.
     trigger.on-preview-healthy: |
-      - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
-        oncePer: app.status?.operationState.syncResult.revision
+      - when: app.status?.operationState?.phase in ['Succeeded'] and app.status?.health?.status == 'Healthy'
+        oncePer: app.status?.operationState?.syncResult?.revision
         send: [doublure-spinup]
 
   # Service Applications of every preview; the selector excludes the

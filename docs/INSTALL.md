@@ -144,7 +144,7 @@ helm upgrade argocd argo/argo-cd -n argocd --version <your installed argo-cd cha
 
 Applying it while pinned previews exist produces one-off spin-up samples for them, measured from their last deploy.
 
-Check: `doublure_argocd_events_total` increases after the next labeled PR. Without Helm, see the file's comments. Details: ARCHITECTURE [Spin-up endpoint](ARCHITECTURE.md#spin-up-endpoint).
+Check: `doublure_argocd_events_total` increases after the next labeled PR. Without Helm, see the file's comments. To remove the setup later, revert the Argo CD release without the file, then delete the token, which Helm leaves in the Secret: `kubectl -n argocd patch secret argocd-notifications-secret --type=json -p '[{"op":"remove","path":"/data/doublure-webhook-token"}]'`. Details: ARCHITECTURE [Spin-up endpoint](ARCHITECTURE.md#spin-up-endpoint).
 
 ## 7. Service repos
 
