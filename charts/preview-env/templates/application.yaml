@@ -1,5 +1,21 @@
 {{- range .Values.services }}
 {{- $c := index ($.Values.serviceCharts | default dict) .name | default dict }}
+{{- $svc := .name }}
+{{- range $k := list "branch" "path" "imageTagParam" "hostParam" }}
+{{- $v := index $c $k }}
+{{- if not (or (kindIs "invalid" $v) (kindIs "string" $v)) }}
+{{- fail (printf "serviceCharts.%s.%s must be a string (quote YAML 1.1 booleans such as yes, no, on, off), got %v" $svc $k $v) }}
+{{- end }}
+{{- end }}
+{{- $vf := $c.valueFiles }}
+{{- if not (or (kindIs "invalid" $vf) (kindIs "slice" $vf)) }}
+{{- fail (printf "serviceCharts.%s.valueFiles must be a list of strings, got %v" $svc $vf) }}
+{{- end }}
+{{- range ($vf | default list) }}
+{{- if not (kindIs "string" .) }}
+{{- fail (printf "serviceCharts.%s.valueFiles items must be strings (quote YAML 1.1 booleans such as yes, no, on, off), got %v" $svc .) }}
+{{- end }}
+{{- end }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
