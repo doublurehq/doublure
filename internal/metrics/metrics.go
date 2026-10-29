@@ -20,6 +20,8 @@ const (
 	resultDeleted  = "deleted"
 	resultOK       = "ok"
 	resultError    = "error"
+	resultRecorded = "recorded"
+	resultIgnored  = "ignored"
 
 	labelResult = "result"
 )
@@ -37,6 +39,8 @@ type Metrics struct {
 	sweepLastSuccess  prometheus.Gauge
 	sweepDeleted      *prometheus.CounterVec
 	previews          prometheus.Gauge
+	spinUp            *prometheus.HistogramVec
+	argoCDEvents      *prometheus.CounterVec
 }
 
 // New builds a registry holding the Go and process collectors and every
@@ -90,6 +94,17 @@ func New() *Metrics {
 			Name:      "previews",
 			Help:      "Previews in the gitops repo as of the last in-server cleanup sweep, 0 before the first one.",
 		}),
+		spinUp: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "preview_spinup_seconds",
+			Help:      "Time from doublure's gitops write to the service's Argo CD Application being synced and Healthy.",
+			Buckets:   []float64{15, 30, 60, 120, 180, 300, 600, 900, 1800},
+		}, []string{"service"}),
+		argoCDEvents: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "argocd_events_total",
+			Help:      "Argo CD notification events, by whether they were recorded as a spin-up.",
+		}, []string{labelResult}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -103,6 +118,8 @@ func New() *Metrics {
 		m.sweepLastSuccess,
 		m.sweepDeleted,
 		m.previews,
+		m.spinUp,
+		m.argoCDEvents,
 	)
 	return m
 }
@@ -196,4 +213,22 @@ func (m *Metrics) SweepRun(ok bool, at time.Time) {
 	}
 	m.sweepRuns.WithLabelValues(resultOK).Inc()
 	m.sweepLastSuccess.Set(float64(at.Unix()))
+}
+
+// SpinUp observes the spin-up duration d of service and counts one recorded
+// Argo CD event.
+func (m *Metrics) SpinUp(service string, d time.Duration) {
+	if m == nil {
+		return
+	}
+	m.spinUp.WithLabelValues(service).Observe(d.Seconds())
+	m.argoCDEvents.WithLabelValues(resultRecorded).Inc()
+}
+
+// ArgoCDEventIgnored counts one Argo CD event that recorded no spin-up.
+func (m *Metrics) ArgoCDEventIgnored() {
+	if m == nil {
+		return
+	}
+	m.argoCDEvents.WithLabelValues(resultIgnored).Inc()
 }

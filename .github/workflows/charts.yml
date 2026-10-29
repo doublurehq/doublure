@@ -204,6 +204,16 @@ jobs:
             exit 1
           fi
 
+      - name: Render doublure optional Argo CD webhook token
+        run: |
+          got=$(helm template t charts/doublure -f charts/doublure/ci/test-values.yaml \
+            | yq -N 'select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select(.name == "ARGOCD_WEBHOOK_TOKEN") | .valueFrom.secretKeyRef | .name + " " + .key + " " + (.optional | to_string)')
+          if [ "$got" != 'doublure argocd-webhook-token true' ]; then
+            echo '::error::expected ARGOCD_WEBHOOK_TOKEN from optional key argocd-webhook-token of Secret doublure on the Deployment'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+
       - name: Render doublure with numeric github ids
         run: |
           out=$(helm template t charts/doublure -f - <<'EOF'

@@ -21,7 +21,7 @@ Self-hosted, single-tenant. Everything runs in the user's cluster; doublure talk
 
 | Component | Where | Notes |
 |---|---|---|
-| `doublure serve` | this repo | chi HTTP server: `/healthz`, `/v1/deploy`, `/webhooks/github` |
+| `doublure serve` | this repo | chi HTTP server: `/healthz`, `/v1/deploy`, `/webhooks/github`, `/webhooks/argocd` (optional) |
 | `doublure cleanup` | this repo | One-shot, CronJob (hourly). Per preview, the first matching rule: no pinned service → delete; `CLEANUP_TTL` set and no deploy within it → delete; otherwise unpin closed PRs, and open PRs whose label moved, conflicts or is gone (see [Cleanup sweep](#cleanup-sweep)) |
 | `doublure bootstrap-app` / `verify-app` | this repo | Create a GitHub App via the manifest flow / check credentials |
 | `preview-env` chart | this repo, [`charts/preview-env`](../charts/preview-env) | Renders AppProject, Namespace, one ArgoCD Application per service; Application annotations `preview.doublure.dev/*` carry the PR metadata |
@@ -158,6 +158,11 @@ POST /webhooks/github
   pull_request opened/reopened/synchronize/labeled/unlabeled/closed → async reconcile; other actions → log only
   other events → structured log only
   parse failures / handler panics → logged, 200
+
+POST /webhooks/argocd       # only when ARGOCD_WEBHOOK_TOKEN is set (404 otherwise)
+  Authorization: Bearer $ARGOCD_WEBHOOK_TOKEN (401 on mismatch)
+  { "app", "service", "preview", "revision", "updatedAt" }   # at most 64 KiB; invalid → 400
+  → 204, recorded or ignored (see Spin-up endpoint)
 ```
 
 Manual deploy flow (`/v1/deploy`): validate `service` against `services.yaml` → slugify `head_ref` → read or bootstrap `previews/<slug>/values.yaml` → write with SHA optimistic locking + 409 retry → PR comment fan-out (best-effort, failures returned as `warnings`).
@@ -252,6 +257,7 @@ GITOPS_REPO                 # owner/repo
 DOUBLURE_DEPLOY_TOKEN
 LISTEN_ADDR                 # default :8080
 METRICS_ADDR                # default :9090 when unset; set to "" to disable /metrics
+ARGOCD_WEBHOOK_TOKEN        # optional; enables /webhooks/argocd
 CLEANUP_INTERVAL            # serve, optional: Go duration of at least 1m (e.g. 1h); unset disables the in-server sweep
 CLEANUP_TTL                 # cleanup, and serve when CLEANUP_INTERVAL is set, optional: Go duration (e.g. 168h); unset disables expiry
 ```
@@ -277,12 +283,21 @@ Every label has a closed set of values. Go runtime (`go_*`) and process (`proces
 | `doublure_sweep_last_success_timestamp_seconds` | gauge | | Unix time of the last successful in-server sweep. |
 | `doublure_sweep_previews_deleted_total` | counter | `rule` | Previews deleted by the sweep: `no_pin` (rule 1) or `ttl` (rule 2). |
 | `doublure_previews` | gauge | | Previews listed by the last in-server sweep, minus those it deleted. |
+| `doublure_preview_spinup_seconds` | histogram | `service` | Spin-up time of a pinned service, from doublure's gitops write to its Application synced and Healthy (see [Spin-up endpoint](#spin-up-endpoint)). Buckets: 15, 30, 60, 120, 180, 300, 600, 900, 1800 s. `service` is a catalog service. |
+| `doublure_argocd_events_total` | counter | `result` | Events accepted by `/webhooks/argocd`: `recorded` (a spin-up was observed) or `ignored`. 400 and 401 answers are not counted. |
 
 `doublure_previews` and `doublure_sweep_last_success_timestamp_seconds` are always exported and read 0 until the first in-server sweep: with the CronJob alone they stay at 0.
 
 ### Spin-up endpoint
 
-Added with the Argo CD notifications callback.
+doublure never reads the cluster, so Argo CD's notifications controller tells it when a preview service is up: it POSTs to `/webhooks/argocd` when a service's Application is synced and Healthy at a new revision, once per revision. Configuration: [`examples/argocd/notifications-values.yaml`](../examples/argocd/notifications-values.yaml).
+
+- The route exists only when `ARGOCD_WEBHOOK_TOKEN` is set (chart: optional `argocd-webhook-token` key of `existingSecret`). Requests need `Authorization: Bearer $ARGOCD_WEBHOOK_TOKEN`, compared in constant time; a missing or wrong token gets 401. The public Ingress exposes the route too.
+- The JSON body is at most 64 KiB; invalid JSON or a larger body gets 400.
+- Spin-up is `now − updatedAt`, where `updatedAt` is the Application's `preview.doublure.dev/updated-at` annotation: the time doublure wrote the service to the gitops repo. It runs from that write to the Application synced and Healthy at that revision, so it includes the ApplicationSet poll and any wait for CI to push the image.
+- An event is recorded when `service` is set and `updatedAt` is RFC 3339 and 0 to 24h old; any other valid event is ignored. Unpinned services carry no `updated-at`, so their events are ignored. Events are not checked against the catalog: the token is the gate.
+- Late samples: the notifications controller also sends the trigger for already-Healthy pinned Applications the first time the configuration is applied, and re-sends it after a failed delivery (doublure restarting, a 5xx). Each is recorded as the time since `updated-at`, up to the 24h bound, so it usually lands in `+Inf`. Read samples above the top bucket (1800 s) as backfill or retries, not real spin-ups.
+- Every valid, authorized event gets 204, recorded or not, and logs `argocd event` with `app`, `service`, `preview`, `revision`, `result` and, when recorded, `spinup_seconds`.
 
 ### Dashboard
 

@@ -77,6 +77,7 @@ Configuration (env):
 | `DOUBLURE_DEPLOY_TOKEN` | yes | bearer token for manual `/v1/deploy` calls |
 | `LISTEN_ADDR` | no | default `:8080` |
 | `METRICS_ADDR` | no | Prometheus `/metrics` listener, default `:9090`; set to empty to disable |
+| `ARGOCD_WEBHOOK_TOKEN` | no | bearer token of Argo CD notifications; enables `/webhooks/argocd` |
 | `CLEANUP_INTERVAL` | no | `serve` runs the cleanup sweep this often, a Go duration of at least `1m` (e.g. `1h`); unset disables it |
 | `CLEANUP_TTL` | no | sweep expiry, a Go duration (e.g. `168h`), for `cleanup` and the in-server sweep; unset disables expiry |
 

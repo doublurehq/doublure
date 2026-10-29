@@ -37,12 +37,25 @@ func WithMetrics(m *metrics.Metrics) Option {
 	}
 }
 
+// WithArgoCDToken enables POST /webhooks/argocd, authenticated by the Bearer
+// token. An empty token leaves the route unregistered.
+func WithArgoCDToken(token string) Option {
+	return func(s *Server) {
+		s.argoCDToken = token
+	}
+}
+
 type Server struct {
 	webhook     WebhookValidator
 	gitops      gitopsAPI
 	metrics     *metrics.Metrics
 	lifecycle   lifecycleAPI
 	deployToken string
+	// argoCDToken authenticates POST /webhooks/argocd, "" when it is
+	// disabled.
+	argoCDToken string
+	// now is the clock spin-up durations are measured against.
+	now func() time.Time
 	// allowedInstallationID is the only GitHub App installation whose webhook
 	// deliveries are dispatched.
 	allowedInstallationID int64
@@ -69,6 +82,7 @@ func NewServer(
 		deployToken:           deployToken,
 		allowedInstallationID: allowedInstallationID,
 		jobTimeout:            reconcileTimeout,
+		now:                   time.Now,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -80,6 +94,9 @@ func NewServer(
 	r.Use(accessLog)
 	r.Get("/healthz", s.handleHealthz)
 	r.Post("/webhooks/github", s.handleWebhook)
+	if s.argoCDToken != "" {
+		r.With(requireBearer(s.argoCDToken)).Post("/webhooks/argocd", s.handleArgoCDEvent)
+	}
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(requireBearer(deployToken))
 		r.Post("/deploy", s.handleDeploy)

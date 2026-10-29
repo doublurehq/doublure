@@ -240,3 +240,24 @@ func TestLoad_InvalidMetricsAddr(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_ArgoCDWebhookToken(t *testing.T) {
+	setEnv(t, validEnv())
+	t.Setenv("ARGOCD_WEBHOOK_TOKEN", "")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ArgoCDWebhookToken != "" {
+		t.Errorf("ArgoCDWebhookToken = %q, want empty when unset", cfg.ArgoCDWebhookToken)
+	}
+
+	t.Setenv("ARGOCD_WEBHOOK_TOKEN", "argocd-secret")
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ArgoCDWebhookToken != "argocd-secret" {
+		t.Errorf("ArgoCDWebhookToken = %q, want %q", cfg.ArgoCDWebhookToken, "argocd-secret")
+	}
+}

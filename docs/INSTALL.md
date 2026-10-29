@@ -116,7 +116,7 @@ helm install doublure oci://ghcr.io/doublurehq/charts/doublure -n doublure \
 ```
 
 - Pin `--version` in production. The image tag defaults to the chart `appVersion`.
-- The Ingress also exposes `POST /v1/deploy`, the manual trigger, protected by the `deploy-token` bearer token (see [README](../README.md)).
+- The Ingress also exposes `POST /v1/deploy`, the manual trigger, protected by the `deploy-token` bearer token (see [README](../README.md)), and `POST /webhooks/argocd`, protected by the optional `argocd-webhook-token` bearer token.
 - `cleanup.ttl` (e.g. `168h`) is optional: it also deletes previews with no deploy for that long.
 - `cleanup.interval=1h` runs the cleanup sweep in the server, which exports its metrics (with the Prometheus Operator, scrape them with `metrics.serviceMonitor.enabled=true` and `metrics.serviceMonitor.labels` matching its selector, e.g. `release: <kube-prometheus-stack release>`); `cleanup.enabled=true`, an hourly CronJob without metrics, is the alternative, not to combine with it.
 - Keep `replicaCount: 1`.
@@ -128,6 +128,23 @@ Check:
 ```bash
 curl https://doublure.example.com/healthz   # {"status":"ok"}
 ```
+
+### Spin-up time (optional)
+
+To measure how long each preview service takes to come up (`doublure_preview_spinup_seconds`), Argo CD's notifications controller calls doublure when a service is Healthy. Generate a token (e.g. `openssl rand -hex 32`) as `ARGOCD_WEBHOOK_TOKEN`, add it to the doublure Secret as `argocd-webhook-token` (a merge patch keeps the other keys) and restart doublure, then apply [`examples/argocd/notifications-values.yaml`](../examples/argocd/notifications-values.yaml) to your Argo CD release:
+
+```bash
+kubectl patch secret doublure -n doublure --type merge \
+  -p "{\"stringData\":{\"argocd-webhook-token\":\"$ARGOCD_WEBHOOK_TOKEN\"}}"
+kubectl rollout restart deployment/doublure -n doublure
+helm upgrade argocd argo/argo-cd -n argocd --version <your installed argo-cd chart version> \
+  --reuse-values -f notifications-values.yaml \
+  --set-string notifications.secret.items.doublure-webhook-token="$ARGOCD_WEBHOOK_TOKEN"
+```
+
+Applying it while pinned previews exist produces one-off spin-up samples for them, measured from their last deploy.
+
+Check: `doublure_argocd_events_total` increases after the next labeled PR. Without Helm, see the file's comments. To remove the setup later, revert the Argo CD release without the file, then delete the token, which Helm leaves in the Secret: `kubectl -n argocd patch secret argocd-notifications-secret --type=json -p '[{"op":"remove","path":"/data/doublure-webhook-token"}]'`. Details: ARCHITECTURE [Spin-up endpoint](ARCHITECTURE.md#spin-up-endpoint).
 
 ## 7. Service repos
 

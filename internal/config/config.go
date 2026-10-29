@@ -20,6 +20,9 @@ type Config struct {
 	// MetricsAddr is the listen address of the metrics server, "" when it is
 	// disabled.
 	MetricsAddr string
+	// ArgoCDWebhookToken authenticates POST /webhooks/argocd, "" when it is
+	// disabled.
+	ArgoCDWebhookToken string
 }
 
 // Load reads configuration from environment variables and validates it.
@@ -65,14 +68,15 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		AppID:          appID,
-		PrivateKey:     privateKey,
-		WebhookSecret:  webhookSecret,
-		InstallationID: installationID,
-		GitOpsRepo:     gitOpsRepo,
-		ListenAddr:     listenAddr,
-		DeployToken:    deployToken,
-		MetricsAddr:    metricsAddr,
+		AppID:              appID,
+		PrivateKey:         privateKey,
+		WebhookSecret:      webhookSecret,
+		InstallationID:     installationID,
+		GitOpsRepo:         gitOpsRepo,
+		ListenAddr:         listenAddr,
+		DeployToken:        deployToken,
+		MetricsAddr:        metricsAddr,
+		ArgoCDWebhookToken: os.Getenv("ARGOCD_WEBHOOK_TOKEN"),
 	}, nil
 }
 
