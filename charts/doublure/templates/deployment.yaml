@@ -37,6 +37,12 @@ spec:
             {{- end }}
           env:
             {{- include "doublure.env" . | nindent 12 }}
+            - name: ARGOCD_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: argocd-webhook-token
+                  optional: true
             - name: METRICS_ADDR
               value: {{ ternary (printf ":%v" .Values.metrics.port) "" .Values.metrics.enabled | quote }}
             {{- with .Values.cleanup.interval }}

@@ -143,6 +143,34 @@ doublure_gitops_operation_duration_seconds_count{op="write",result="ok"} 1
 `, "doublure_gitops_operation_duration_seconds")
 }
 
+func TestMetrics_SpinUp(t *testing.T) {
+	m := metrics.New()
+	m.SpinUp("backend-1", 45*time.Second)
+	m.ArgoCDEventIgnored()
+	m.ArgoCDEventIgnored()
+
+	assertGathered(t, m, `
+# HELP doublure_preview_spinup_seconds Time from doublure's gitops write to the service's Argo CD Application being synced and Healthy.
+# TYPE doublure_preview_spinup_seconds histogram
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="15"} 0
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="30"} 0
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="60"} 1
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="120"} 1
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="180"} 1
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="300"} 1
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="600"} 1
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="900"} 1
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="1800"} 1
+doublure_preview_spinup_seconds_bucket{service="backend-1",le="+Inf"} 1
+doublure_preview_spinup_seconds_sum{service="backend-1"} 45
+doublure_preview_spinup_seconds_count{service="backend-1"} 1
+# HELP doublure_argocd_events_total Argo CD notification events, by whether they were recorded as a spin-up.
+# TYPE doublure_argocd_events_total counter
+doublure_argocd_events_total{result="ignored"} 2
+doublure_argocd_events_total{result="recorded"} 1
+`, "doublure_preview_spinup_seconds", "doublure_argocd_events_total")
+}
+
 func TestMetrics_ProcessAndGoCollectors(t *testing.T) {
 	m := metrics.New()
 	for _, name := range []string{"go_goroutines", "process_start_time_seconds"} {
@@ -161,6 +189,8 @@ func TestMetrics_NilIsSafe(t *testing.T) {
 	m.SweepDeleted("ttl")
 	m.GitopsOp("write", "ok", time.Second)
 	m.SweepRun(true, time.Now())
+	m.SpinUp("backend-1", time.Minute)
+	m.ArgoCDEventIgnored()
 
 	rec := httptest.NewRecorder()
 	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))

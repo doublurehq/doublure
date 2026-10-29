@@ -93,7 +93,8 @@ func serveCmd() *cobra.Command {
 				return err
 			}
 
-			srv := server.NewServer(app, gitopsClient, cfg.DeployToken, cfg.InstallationID, server.WithMetrics(m))
+			srv := server.NewServer(app, gitopsClient, cfg.DeployToken, cfg.InstallationID,
+				server.WithMetrics(m), server.WithArgoCDToken(cfg.ArgoCDWebhookToken))
 			httpSrv := &http.Server{
 				Addr:              cfg.ListenAddr,
 				Handler:           srv.Handler(),

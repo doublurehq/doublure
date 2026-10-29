@@ -21,13 +21,14 @@ config:
   gitopsRepo: ""
 
 # Required: existing Secret with keys github-private-key, github-webhook-secret and deploy-token.
+# Optional key argocd-webhook-token enables POST /webhooks/argocd (ARGOCD_WEBHOOK_TOKEN).
 existingSecret: ""
 
 # Port the server listens on and the Service exposes.
 service:
   port: 8080
 
-# Ingress exposing /webhooks/github and /v1/deploy; host is required when enabled.
+# Ingress exposing /webhooks/github, /webhooks/argocd and /v1/deploy; host is required when enabled.
 ingress:
   enabled: false
   className: ""
