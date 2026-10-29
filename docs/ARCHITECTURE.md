@@ -296,6 +296,7 @@ doublure never reads the cluster, so Argo CD's notifications controller tells it
 - The JSON body is at most 64 KiB; invalid JSON or a larger body gets 400.
 - Spin-up is `now − updatedAt`, where `updatedAt` is the Application's `preview.doublure.dev/updated-at` annotation: the time doublure wrote the service to the gitops repo. It runs from that write to the Application synced and Healthy at that revision, so it includes the ApplicationSet poll and any wait for CI to push the image.
 - An event is recorded when `service` is set and `updatedAt` is RFC 3339 and 0 to 24h old; any other valid event is ignored. Unpinned services carry no `updated-at`, so their events are ignored. Events are not checked against the catalog: the token is the gate.
+- Late samples: the notifications controller also sends the trigger for already-Healthy pinned Applications the first time the configuration is applied, and re-sends it after a failed delivery (doublure restarting, a 5xx). Each is recorded as the time since `updated-at`, up to the 24h bound, so it usually lands in `+Inf`. Read samples above the top bucket (1800 s) as backfill or retries, not real spin-ups.
 - Every valid, authorized event gets 204, recorded or not, and logs `argocd event` with `app`, `service`, `preview`, `revision`, `result` and, when recorded, `spinup_seconds`.
 
 ### Dashboard
