@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/doublurehq/doublure/compare/v0.10.0...v0.11.0) (2026-10-29)
+
+
+### Features
+
+* let each service set its chart branch, path and parameters ([#42](https://github.com/doublurehq/doublure/issues/42)) ([c2ba1c1](https://github.com/doublurehq/doublure/commit/c2ba1c14112569901ecbc4972ab638e99040ec73))
+
 ## [0.10.0](https://github.com/doublurehq/doublure/compare/v0.9.0...v0.10.0) (2026-10-28)
 
 
