@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/doublurehq/doublure/compare/v0.11.1...v0.12.0) (2026-10-29)
+
+
+### Features
+
+* expose prometheus metrics and run the sweep in the server ([#47](https://github.com/doublurehq/doublure/issues/47)) ([69913ad](https://github.com/doublurehq/doublure/commit/69913adbfcdcf4bfdf9566325ad67b3de025140a))
+* measure preview spin-up time ([#49](https://github.com/doublurehq/doublure/issues/49)) ([6edcce6](https://github.com/doublurehq/doublure/commit/6edcce67750398444e98836ba239e733b5fedd74))
+
 ## [0.11.1](https://github.com/doublurehq/doublure/compare/v0.11.0...v0.11.1) (2026-10-29)
 
 
