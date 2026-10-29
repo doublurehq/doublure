@@ -124,18 +124,18 @@ func TestArgoCDEvent_Recorded(t *testing.T) {
 	if err := testutil.GatherAndCompare(m.Gatherer(), strings.NewReader(`
 # HELP doublure_preview_spinup_seconds Time from doublure's gitops write to the service's Argo CD Application being synced and Healthy.
 # TYPE doublure_preview_spinup_seconds histogram
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="15"} 0
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="30"} 0
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="60"} 0
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="120"} 1
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="180"} 1
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="300"} 1
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="600"} 1
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="900"} 1
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="1800"} 1
-doublure_preview_spinup_seconds_bucket{service="backend-1",le="+Inf"} 1
-doublure_preview_spinup_seconds_sum{service="backend-1"} 120
-doublure_preview_spinup_seconds_count{service="backend-1"} 1
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="15"} 0
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="30"} 0
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="60"} 0
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="120"} 1
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="180"} 1
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="300"} 1
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="600"} 1
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="900"} 1
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="1800"} 1
+doublure_preview_spinup_seconds_bucket{catalog_service="backend-1",le="+Inf"} 1
+doublure_preview_spinup_seconds_sum{catalog_service="backend-1"} 120
+doublure_preview_spinup_seconds_count{catalog_service="backend-1"} 1
 `), "doublure_preview_spinup_seconds"); err != nil {
 		t.Error(err)
 	}

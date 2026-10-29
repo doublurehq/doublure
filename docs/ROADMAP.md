@@ -8,7 +8,6 @@ Shipped so far: [CHANGELOG.md](../CHANGELOG.md) and [GitHub releases](https://gi
 
 | # | Change | Goal | Depends on |
 |---|---|---|---|
-| 6 | **Metrics + dashboard**: deploy/teardown events, spin-up time (deploy call → ArgoCD healthy), live previews, zombies swept; Next.js dashboard | measure | — |
 | 11 | **E2E demo**: agent-opened PR → preview → tests against preview URL → merge → teardown | validate AI output | all |
 
 ## Non-goals

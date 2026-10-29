@@ -164,7 +164,7 @@ jobs:
           fi
 
       - name: Render doublure with all components
-        run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true,metrics.serviceMonitor.enabled=true
+        run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true,metrics.serviceMonitor.enabled=true,dashboard.enabled=true
 
       - name: Render doublure cleanup TTL
         run: |
@@ -200,6 +200,23 @@ jobs:
             | yq -N 'select(.kind == "ServiceMonitor") | .metadata.labels.release')
           if [ "$got" != 'kps' ]; then
             echo '::error::expected a ServiceMonitor labelled release=kps when metrics.serviceMonitor is enabled'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+
+      - name: Render doublure dashboard ConfigMap
+        run: |
+          cm=$(helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set dashboard.enabled=true \
+            | yq -N 'select(.kind == "ConfigMap" and .metadata.name == "t-dashboard")')
+          got=$(echo "$cm" | yq -N '.metadata.labels.grafana_dashboard')
+          if [ "$got" != '1' ]; then
+            echo '::error::expected the dashboard ConfigMap labelled grafana_dashboard="1"'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+          got=$(echo "$cm" | yq -N '.data["doublure.json"]' | jq -r '.uid + " " + (.panels | length | tostring)')
+          if [ "$got" != 'doublure 10' ]; then
+            echo '::error::expected doublure.json to parse with uid "doublure" and 10 panels'
             printf 'got: %s\n' "$got"
             exit 1
           fi

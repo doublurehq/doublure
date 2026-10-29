@@ -283,7 +283,7 @@ Every label has a closed set of values. Go runtime (`go_*`) and process (`proces
 | `doublure_sweep_last_success_timestamp_seconds` | gauge | | Unix time of the last successful in-server sweep. |
 | `doublure_sweep_previews_deleted_total` | counter | `rule` | Previews deleted by the sweep: `no_pin` (rule 1) or `ttl` (rule 2). |
 | `doublure_previews` | gauge | | Previews listed by the last in-server sweep, minus those it deleted. |
-| `doublure_preview_spinup_seconds` | histogram | `service` | Spin-up time of a pinned service, from doublure's gitops write to its Application synced and Healthy (see [Spin-up endpoint](#spin-up-endpoint)). Buckets: 15, 30, 60, 120, 180, 300, 600, 900, 1800 s. `service` is a catalog service. |
+| `doublure_preview_spinup_seconds` | histogram | `catalog_service` | Spin-up time of a pinned service, from doublure's gitops write to its Application synced and Healthy (see [Spin-up endpoint](#spin-up-endpoint)). Buckets: 15, 30, 60, 120, 180, 300, 600, 900, 1800 s. `catalog_service` is a catalog service; it is not named `service` because that collides with the `service` target label Prometheus adds when scraping through a ServiceMonitor. |
 | `doublure_argocd_events_total` | counter | `result` | Events accepted by `/webhooks/argocd`: `recorded` (a spin-up was observed) or `ignored`. 400 and 401 answers are not counted. |
 
 `doublure_previews` and `doublure_sweep_last_success_timestamp_seconds` are always exported and read 0 until the first in-server sweep: with the CronJob alone they stay at 0.
@@ -301,7 +301,7 @@ doublure never reads the cluster, so Argo CD's notifications controller tells it
 
 ### Dashboard
 
-Added with the Argo CD notifications callback.
+[`charts/doublure/dashboards/doublure.json`](../charts/doublure/dashboards/doublure.json) is a Grafana dashboard (uid `doublure`) over these metrics: live previews, deploys and teardowns per hour, spin-up p50/p90 and p90 by service, zombies swept, reconcile skips by reason, webhook deliveries by status, gitops operation p90 and the last successful sweep. It picks its Prometheus data source through a `datasource` variable. With `dashboard.enabled`, the chart renders it as a ConfigMap labelled `dashboard.labels` (default `grafana_dashboard: "1"`), which the Grafana sidecar of kube-prometheus-stack loads; the JSON also imports on its own. Live previews and last successful sweep need `cleanup.interval`, and the spin-up panels need the Argo CD notifications callback.
 
 ## Demo setup
 

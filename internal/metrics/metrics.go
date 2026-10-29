@@ -99,7 +99,7 @@ func New() *Metrics {
 			Name:      "preview_spinup_seconds",
 			Help:      "Time from doublure's gitops write to the service's Argo CD Application being synced and Healthy.",
 			Buckets:   []float64{15, 30, 60, 120, 180, 300, 600, 900, 1800},
-		}, []string{"service"}),
+		}, []string{"catalog_service"}),
 		argoCDEvents: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "argocd_events_total",
