@@ -164,7 +164,7 @@ jobs:
           fi
 
       - name: Render doublure with all components
-        run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true
+        run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true,metrics.serviceMonitor.enabled=true
 
       - name: Render doublure cleanup TTL
         run: |
@@ -182,6 +182,24 @@ jobs:
           got=$(ttl_env "")
           if [ "$got" != 'CronJob:' ]; then
             echo '::error::expected no CLEANUP_TTL on the cleanup CronJob when cleanup.ttl is unset'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+
+      - name: Render doublure cleanup interval and ServiceMonitor
+        run: |
+          got=$(helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set cleanup.interval=1h \
+            | yq -N 'select(.kind == "Deployment") | .spec.template.spec.containers[0].env[] | select(.name == "CLEANUP_INTERVAL") | .value | tag + " " + .')
+          if [ "$got" != '!!str 1h' ]; then
+            echo '::error::expected CLEANUP_INTERVAL "1h" on the Deployment when cleanup.interval is set'
+            printf 'got: %s\n' "$got"
+            exit 1
+          fi
+          got=$(helm template t charts/doublure -f charts/doublure/ci/test-values.yaml \
+            --set metrics.serviceMonitor.enabled=true,metrics.serviceMonitor.labels.release=kps \
+            | yq -N 'select(.kind == "ServiceMonitor") | .metadata.labels.release')
+          if [ "$got" != 'kps' ]; then
+            echo '::error::expected a ServiceMonitor labelled release=kps when metrics.serviceMonitor is enabled'
             printf 'got: %s\n' "$got"
             exit 1
           fi

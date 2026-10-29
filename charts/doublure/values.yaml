@@ -37,10 +37,30 @@ ingress:
 # Container resource requests and limits.
 resources: {}
 
-# Stale-preview cleanup CronJob.
+# Prometheus metrics, served on their own port: the Ingress does not expose
+# them.
+metrics:
+  # Serve GET /metrics on port (METRICS_ADDR); false disables the listener.
+  enabled: true
+  port: 9090
+  # Prometheus Operator ServiceMonitor, rendered only when metrics are enabled.
+  serviceMonitor:
+    enabled: false
+    # Extra labels, e.g. release: <kube-prometheus-stack release> to match its
+    # serviceMonitorSelector.
+    labels: {}
+    # Scrape interval, e.g. 30s; empty uses Prometheus' default.
+    interval: ""
+
+# Stale-preview cleanup. Use either cleanup.enabled (the CronJob, no metrics)
+# or cleanup.interval (in the server, with metrics), not both.
 cleanup:
+  # Run the sweep as a CronJob on schedule.
   enabled: false
   schedule: "0 * * * *"
+  # Run the sweep in the server every interval (CLEANUP_INTERVAL), as a Go
+  # duration of at least 1m such as 1h; empty disables it.
+  interval: ""
   # Delete previews with no deploy for this long (CLEANUP_TTL), as a Go
   # duration such as 168h; empty disables the TTL.
   ttl: ""
