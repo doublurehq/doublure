@@ -8,7 +8,7 @@ From an empty cluster to a first preview. Contract details live in [ARCHITECTURE
 - An ingress controller with TLS for the doublure webhook URL (GitHub calls it over https), plus wildcard DNS when preview URLs are used.
 - A GitHub gitops repo, and service repos whose CI pushes images tagged with the full commit SHA, all under the one account (user or org) the App is installed on.
 - Service images pullable from the preview namespaces: `preview-env` creates each namespace fresh, with no `imagePullSecrets`. Use public images, node-level registry credentials, or pull secrets set by the service chart.
-- `kubectl`, Helm 3.8+ and Go 1.25+ (for the `doublure` CLI).
+- `kubectl`, Helm 3.8+ and Go 1.26+ (for the `doublure` CLI).
 
 ## 2. Gitops repo
 
