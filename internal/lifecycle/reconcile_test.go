@@ -9,6 +9,7 @@ import (
 
 	"github.com/doublurehq/doublure/internal/gitops"
 	"github.com/doublurehq/doublure/internal/lifecycle"
+	"github.com/doublurehq/doublure/internal/metrics"
 	"github.com/doublurehq/doublure/internal/preview"
 )
 
@@ -28,10 +29,14 @@ type deployCall struct {
 
 // reconcileFake is an in-memory ReconcileAPI. The catalog is parsed from
 // reconcileServices unless catalogErr is set. teardownBySlug, when it has the
-// slug, overrides teardown. previews is what GetPreview reads, unless
-// previewErr is set; an unknown slug is ErrNotFound. calls logs, in order,
-// "teardown:<slug>", "get:<slug>", "write:<slug>", "upsert" and "fanout".
+// slug, overrides teardown, and teardownErr fails every teardown. previews is
+// what GetPreview reads, unless previewErr is set; an unknown slug is
+// ErrNotFound. calls logs, in order, "teardown:<slug>", "get:<slug>",
+// "write:<slug>", "upsert" and "fanout". Metrics records the outcomes; nil
+// records nothing.
 type reconcileFake struct {
+	*metrics.Metrics
+
 	catalogErr     error
 	pr             *gitops.PullRequest
 	prErr          error
@@ -42,6 +47,7 @@ type reconcileFake struct {
 	teardownBySlug map[string]*gitops.TeardownResult
 	previews       map[string]*preview.PreviewValues
 	previewErr     error
+	teardownErr    error
 
 	prReads   int
 	writes    []deployCall
@@ -116,6 +122,9 @@ func (f *reconcileFake) TeardownPreviewWithRetry(
 ) (*gitops.TeardownResult, error) {
 	f.calls = append(f.calls, "teardown:"+slug)
 	f.teardowns = append(f.teardowns, teardownCall{slug: slug, owner: owner, repo: repo, number: prNumber})
+	if f.teardownErr != nil {
+		return nil, f.teardownErr
+	}
 	if res, ok := f.teardownBySlug[slug]; ok {
 		return res, nil
 	}

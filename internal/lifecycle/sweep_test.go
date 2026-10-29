@@ -12,6 +12,7 @@ import (
 
 	"github.com/doublurehq/doublure/internal/gitops"
 	"github.com/doublurehq/doublure/internal/lifecycle"
+	"github.com/doublurehq/doublure/internal/metrics"
 	"github.com/doublurehq/doublure/internal/preview"
 )
 
@@ -102,8 +103,10 @@ type fanOut struct {
 // when set for a slug, is what DeletePreviewWithRetry re-reads (a deploy that
 // landed in between). PR states, labels and head refs are keyed by
 // "owner/repo#n". label is the catalog's preview label, unless catalogErr is
-// set.
+// set. Metrics records the outcomes; nil records nothing.
 type fakeAPI struct {
+	*metrics.Metrics
+
 	label      string
 	catalogErr error
 	prLabels   map[string][]string

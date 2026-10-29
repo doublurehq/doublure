@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	gh "github.com/google/go-github/v71/github"
 	"gopkg.in/yaml.v3"
 
+	"github.com/doublurehq/doublure/internal/metrics"
 	"github.com/doublurehq/doublure/internal/preview"
 )
 
@@ -32,15 +34,40 @@ var (
 
 // Client wraps a go-github client scoped to a specific gitops owner/repo.
 type Client struct {
-	gh    *gh.Client
-	owner string
-	repo  string
+	gh      *gh.Client
+	owner   string
+	repo    string
+	metrics *metrics.Metrics
+}
+
+// Option configures a Client built by NewClient.
+type Option func(*Client)
+
+// WithMetrics times WritePreviewWithRetry and TeardownPreviewWithRetry in m.
+func WithMetrics(m *metrics.Metrics) Option {
+	return func(c *Client) {
+		c.metrics = m
+	}
 }
 
 // NewClient binds the gh client to owner/repo. owner is the GitHub
 // organization or user; repo is the bare repository name.
-func NewClient(client *gh.Client, owner, repo string) *Client {
-	return &Client{gh: client, owner: owner, repo: repo}
+func NewClient(client *gh.Client, owner, repo string, opts ...Option) *Client {
+	c := &Client{gh: client, owner: owner, repo: repo}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
+}
+
+// observe records the duration since start of the gitops operation op, which
+// ended with err.
+func (c *Client) observe(op string, start time.Time, err error) {
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	c.metrics.GitopsOp(op, result, time.Since(start))
 }
 
 // classifyHTTPError translates a go-github response into our sentinel errors
@@ -250,7 +277,27 @@ type WriteResult struct {
 // Returns a WriteResult capturing the final PreviewValues that was written,
 // the gitops commit URL, and the commit message used — callers (e.g. the
 // deploy handler) can render PR summaries without re-fetching.
+//
+// Its duration, retries included, is observed as the write operation.
 func (c *Client) WritePreviewWithRetry(
+	ctx context.Context,
+	slug string,
+	catalog []string,
+	urls preview.URLConfig,
+	serviceName, commitSha string,
+	inputs preview.DeployInputs,
+	createMessage, updateMessage string,
+) (*WriteResult, error) {
+	start := time.Now()
+	res, err := c.writePreviewWithRetry(
+		ctx, slug, catalog, urls, serviceName, commitSha, inputs, createMessage, updateMessage,
+	)
+	c.observe("write", start, err)
+	return res, err
+}
+
+// writePreviewWithRetry is WritePreviewWithRetry, untimed.
+func (c *Client) writePreviewWithRetry(
 	ctx context.Context,
 	slug string,
 	catalog []string,
@@ -314,7 +361,21 @@ type TeardownResult struct {
 // unpin re-applied and update vs delete decided again, up to MaxWriteRetries
 // attempts. A missing file (on read, re-fetch or delete) or a PR that pinned
 // nothing is a no-op: an empty TeardownResult and a nil error.
+//
+// Its duration, retries included, is observed as the teardown operation.
 func (c *Client) TeardownPreviewWithRetry(
+	ctx context.Context,
+	slug, owner, repo string,
+	prNumber int,
+) (*TeardownResult, error) {
+	start := time.Now()
+	res, err := c.teardownPreviewWithRetry(ctx, slug, owner, repo, prNumber)
+	c.observe("teardown", start, err)
+	return res, err
+}
+
+// teardownPreviewWithRetry is TeardownPreviewWithRetry, untimed.
+func (c *Client) teardownPreviewWithRetry(
 	ctx context.Context,
 	slug, owner, repo string,
 	prNumber int,

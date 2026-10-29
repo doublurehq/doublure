@@ -12,7 +12,13 @@ import (
 	"github.com/doublurehq/doublure/internal/preview"
 )
 
-// SweepAPI is the subset of gitops.Client used by Sweep.
+// Sweep rules that delete a preview, the rule label of Recorder.SweepDeleted.
+const (
+	ruleNoPin = "no_pin"
+	ruleTTL   = "ttl"
+)
+
+// SweepAPI is the subset of gitops.Client used by Sweep, plus the Recorder.
 type SweepAPI interface {
 	TeardownAPI
 	ListPreviews(ctx context.Context) ([]string, error)
@@ -46,11 +52,15 @@ type SweepAPI interface {
 // carrying the count. A closed-PR teardown failure is only logged by
 // TeardownPR, not counted, and retried on the next run. A ListPreviews error is
 // returned at once.
+//
+// The number of listed previews and each rule 1-2 deletion are recorded
+// through the Recorder; teardowns are recorded with the sweep trigger.
 func Sweep(ctx context.Context, api SweepAPI, now time.Time, ttl time.Duration) error {
 	slugs, err := api.ListPreviews(ctx)
 	if err != nil {
 		return err
 	}
+	api.SweepListed(len(slugs))
 	slog.InfoContext(ctx, "cleanup started",
 		slog.Int("previews", len(slugs)),
 		slog.String("ttl", ttl.String()),
@@ -151,6 +161,7 @@ func deleteUnpinned(ctx context.Context, api SweepAPI, slug string) error {
 	if !res.Deleted {
 		return nil
 	}
+	api.SweepDeleted(ruleNoPin)
 	slog.InfoContext(ctx, "preview deleted",
 		slog.String("slug", slug),
 		slog.String("reason", "no pins"),
@@ -172,6 +183,7 @@ func deleteExpired(ctx context.Context, api SweepAPI, slug string, ttl time.Dura
 	if !res.Deleted {
 		return nil
 	}
+	api.SweepDeleted(ruleTTL)
 	last, _ := preview.LastDeploy(res.Values)
 	slog.InfoContext(ctx, "preview deleted",
 		slog.String("slug", slug),
@@ -206,7 +218,7 @@ func teardownClosedPRs(ctx context.Context, api SweepAPI, slug, label string, va
 			continue
 		}
 		if !pr.Open {
-			TeardownPR(ctx, api, t, PRClosedReason)
+			TeardownPR(ctx, api, t, PRClosedReason, triggerSweep)
 			continue
 		}
 		unpinMoved(ctx, api, t, pr, label)
@@ -228,7 +240,7 @@ func unpinMoved(ctx context.Context, api TeardownAPI, t Target, pr *gitops.PullR
 	case r.Slug != "" && r.Slug != t.Slug:
 		unpinOnly(ctx, api, t, movedReason(r.Slug))
 	case r.Slug == "" && t.Slug != preview.Slugify(pr.HeadRef):
-		TeardownPR(ctx, api, t, labelRemovedReason(label))
+		TeardownPR(ctx, api, t, labelRemovedReason(label), triggerSweep)
 	}
 }
 

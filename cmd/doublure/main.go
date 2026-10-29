@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/doublurehq/doublure/internal/github"
 	"github.com/doublurehq/doublure/internal/gitops"
 	"github.com/doublurehq/doublure/internal/lifecycle"
+	"github.com/doublurehq/doublure/internal/metrics"
 	"github.com/doublurehq/doublure/internal/server"
 )
 
@@ -30,6 +32,16 @@ const shutdownTimeout = 25 * time.Second
 
 // cleanupTimeout bounds one cleanup sweep over every preview.
 const cleanupTimeout = 10 * time.Minute
+
+// readHeaderTimeout bounds reading a request's headers on every listener.
+const readHeaderTimeout = 10 * time.Second
+
+// sweepAPI is the gitops client with the metrics recorder lifecycle.Sweep
+// expects. A nil *metrics.Metrics records nothing.
+type sweepAPI struct {
+	*gitops.Client
+	*metrics.Metrics
+}
 
 func main() {
 	root := &cobra.Command{
@@ -58,21 +70,26 @@ func serveCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 
+			var m *metrics.Metrics
+			if cfg.MetricsAddr != "" {
+				m = metrics.New()
+			}
+
 			app, err := newApp(cfg)
 			if err != nil {
 				return err
 			}
 
-			gitopsClient, err := newGitopsClient(app, cfg)
+			gitopsClient, err := newGitopsClient(app, cfg, gitops.WithMetrics(m))
 			if err != nil {
 				return err
 			}
 
-			srv := server.NewServer(app, gitopsClient, cfg.DeployToken, cfg.InstallationID)
+			srv := server.NewServer(app, gitopsClient, cfg.DeployToken, cfg.InstallationID, server.WithMetrics(m))
 			httpSrv := &http.Server{
 				Addr:              cfg.ListenAddr,
 				Handler:           srv.Handler(),
-				ReadHeaderTimeout: 10 * time.Second, //nolint:mnd // standard timeout
+				ReadHeaderTimeout: readHeaderTimeout,
 			}
 
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -85,12 +102,13 @@ func serveCmd() *cobra.Command {
 					os.Exit(1)
 				}
 			}()
+			metricsSrv := startMetricsServer(ctx, cfg.MetricsAddr, m)
 
 			<-ctx.Done()
 			slog.InfoContext(ctx, "shutting down server") //nolint:sloglint // no scoped logger yet
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer cancel()
-			if shutdownErr := httpSrv.Shutdown(shutdownCtx); shutdownErr != nil {
+			if shutdownErr := shutdownServers(shutdownCtx, httpSrv, metricsSrv); shutdownErr != nil {
 				return shutdownErr
 			}
 			return srv.WaitBackground(shutdownCtx)
@@ -98,14 +116,55 @@ func serveCmd() *cobra.Command {
 	}
 }
 
+// startMetricsServer serves GET /metrics from m on addr in the background and
+// returns its server. It starts nothing and returns nil when m is nil.
+func startMetricsServer(ctx context.Context, addr string, m *metrics.Metrics) *http.Server {
+	if m == nil {
+		return nil
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", m.Handler())
+	metricsSrv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+	logger := slog.Default()
+	go func() {
+		logger.InfoContext(ctx, "starting metrics server", "addr", addr)
+		if listenErr := metricsSrv.ListenAndServe(); listenErr != nil && listenErr != http.ErrServerClosed {
+			logger.ErrorContext(ctx, "metrics server error", "err", listenErr)
+			os.Exit(1)
+		}
+	}()
+	return metricsSrv
+}
+
+// shutdownServers shuts every non-nil server down concurrently, within ctx,
+// and returns their joined errors.
+func shutdownServers(ctx context.Context, servers ...*http.Server) error {
+	errs := make([]error, len(servers))
+	var wg sync.WaitGroup
+	for i, srv := range servers {
+		if srv == nil {
+			continue
+		}
+		wg.Go(func() {
+			errs[i] = srv.Shutdown(ctx)
+		})
+	}
+	wg.Wait()
+	return errors.Join(errs...)
+}
+
 // newGitopsClient builds the gitops repo client from cfg, authenticated as
-// the GitHub App installation.
-func newGitopsClient(app *github.App, cfg *config.Config) (*gitops.Client, error) {
+// the GitHub App installation, with opts.
+func newGitopsClient(app *github.App, cfg *config.Config, opts ...gitops.Option) (*gitops.Client, error) {
 	owner, repo, ok := strings.Cut(cfg.GitOpsRepo, "/")
 	if !ok || owner == "" || repo == "" {
 		return nil, fmt.Errorf("GITOPS_REPO must be 'owner/repo', got %q", cfg.GitOpsRepo)
 	}
-	return gitops.NewClient(app.ClientForInstallation(cfg.InstallationID), owner, repo), nil
+	return gitops.NewClient(app.ClientForInstallation(cfg.InstallationID), owner, repo, opts...), nil
 }
 
 // newApp builds the GitHub App from the loaded config.
@@ -147,7 +206,7 @@ func cleanupCmd() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), cleanupTimeout)
 			defer cancel()
-			return lifecycle.Sweep(ctx, client, time.Now().UTC(), ttl)
+			return lifecycle.Sweep(ctx, sweepAPI{Client: client}, time.Now().UTC(), ttl)
 		},
 	}
 }

@@ -90,7 +90,7 @@ func (s *Server) startReconcile(ctx context.Context, e *gh.PullRequestEvent) {
 			slog.Any("panic", rec),
 		)
 	}, func(jctx context.Context) {
-		lifecycle.ReconcilePR(jctx, s.gitops, ev)
+		lifecycle.ReconcilePR(jctx, s.lifecycle, ev)
 	})
 }
 
@@ -125,7 +125,7 @@ func (s *Server) startClosed(ctx context.Context, ev lifecycle.Event) {
 			slog.Any("panic", rec),
 		)
 	}, func(jctx context.Context) {
-		lifecycle.ReconcilePR(jctx, s.gitops, ev)
+		lifecycle.ReconcilePR(jctx, s.lifecycle, ev)
 	})
 }
 

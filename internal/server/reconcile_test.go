@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	gh "github.com/google/go-github/v71/github"
 
 	"github.com/doublurehq/doublure/internal/gitops"
+	"github.com/doublurehq/doublure/internal/metrics"
 )
 
 const (
@@ -402,5 +405,42 @@ func TestJobs_TimeoutStartsAfterLock(t *testing.T) {
 	if fg.capturedSlug != "feature-pricing" || fg.capturedInputs.CommitSha != fetchedSHA {
 		t.Errorf("deployed to %q at %q, want feature-pricing at %q: job 2's timeout ran while it waited for the lock",
 			fg.capturedSlug, fg.capturedInputs.CommitSha, fetchedSHA)
+	}
+}
+
+func TestReconcile_RecordsMetrics(t *testing.T) {
+	m := metrics.New()
+	s, _ := newTeardownServer(t, reconcileFake(), WithMetrics(m))
+	deliver(t, s, labelEvent("labeled", "preview", "preview"))
+
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if want := `doublure_reconciles_total{outcome="deployed"} 1`; !strings.Contains(rec.Body.String(), want) {
+		t.Errorf("metrics lack %q:\n%s", want, rec.Body.String())
+	}
+}
+
+func TestGo_TrackedByWaitBackground(t *testing.T) {
+	s, _ := newTeardownServer(t, reconcileFake())
+	release := make(chan struct{})
+	done := make(chan struct{})
+	s.Go(func() {
+		<-release
+		close(done)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), quiet)
+	defer cancel()
+	if err := s.WaitBackground(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitBackground before release = %v, want deadline exceeded", err)
+	}
+	close(release)
+	if err := s.WaitBackground(context.Background()); err != nil {
+		t.Fatalf("WaitBackground: %v", err)
+	}
+	select {
+	case <-done:
+	default:
+		t.Error("WaitBackground returned before f finished")
 	}
 }

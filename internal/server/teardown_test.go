@@ -18,15 +18,15 @@ const (
 	teardownCommitURL = "https://github.com/acme/gitops/commit/c0ffee"
 )
 
-// newTeardownServer returns a server backed by fg, with every log record
-// captured.
-func newTeardownServer(t *testing.T, fg *fakeGitops) (*Server, *LogCapture) {
+// newTeardownServer returns a server backed by fg and configured by opts,
+// with every log record captured.
+func newTeardownServer(t *testing.T, fg *fakeGitops, opts ...Option) (*Server, *LogCapture) {
 	t.Helper()
 	capture := &LogCapture{}
 	prev := slog.Default()
 	slog.SetDefault(slog.New(capture))
 	t.Cleanup(func() { slog.SetDefault(prev) })
-	return NewServer(nil, fg, "t", 123), capture
+	return NewServer(nil, fg, "t", 123, opts...), capture
 }
 
 // prEvent builds a pull_request event for acme/backend-1#42 on

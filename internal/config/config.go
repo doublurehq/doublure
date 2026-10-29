@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 )
@@ -16,6 +17,9 @@ type Config struct {
 	GitOpsRepo     string
 	ListenAddr     string
 	DeployToken    string
+	// MetricsAddr is the listen address of the metrics server, "" when it is
+	// disabled.
+	MetricsAddr string
 }
 
 // Load reads configuration from environment variables and validates it.
@@ -55,6 +59,11 @@ func Load() (*Config, error) {
 		listenAddr = ":8080"
 	}
 
+	metricsAddr, err := loadMetricsAddr()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		AppID:          appID,
 		PrivateKey:     privateKey,
@@ -63,7 +72,24 @@ func Load() (*Config, error) {
 		GitOpsRepo:     gitOpsRepo,
 		ListenAddr:     listenAddr,
 		DeployToken:    deployToken,
+		MetricsAddr:    metricsAddr,
 	}, nil
+}
+
+// loadMetricsAddr reads METRICS_ADDR: unset means ":9090", set to "" means
+// disabled, and any other value must be a host:port.
+func loadMetricsAddr() (string, error) {
+	addr, ok := os.LookupEnv("METRICS_ADDR")
+	if !ok {
+		return ":9090", nil
+	}
+	if addr == "" {
+		return "", nil
+	}
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		return "", fmt.Errorf("METRICS_ADDR must be host:port, got %q", addr)
+	}
+	return addr, nil
 }
 
 func requireEnv(key string) (string, error) {
