@@ -3,6 +3,7 @@ package gitops_test
 import (
 	"context"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -53,16 +54,25 @@ func TestClientMetrics_TimesRetryOperations(t *testing.T) {
 		t.Fatalf("TeardownPreviewWithRetry: %v", err)
 	}
 
-	rec := httptest.NewRecorder()
-	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	body := rec.Body.String()
-	for _, want := range []string{
-		`doublure_gitops_operation_duration_seconds_count{op="write",result="ok"} 1`,
-		`doublure_gitops_operation_duration_seconds_count{op="teardown",result="error"} 1`,
-		`doublure_gitops_operation_duration_seconds_count{op="teardown",result="ok"} 1`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("metrics lack %q", want)
+	// Durations vary, so only each operation's observation count is compared.
+	families, err := m.Gatherer().Gather()
+	if err != nil {
+		t.Fatalf("Gather: %v", err)
+	}
+	got := map[string]uint64{}
+	for _, mf := range families {
+		if mf.GetName() != "doublure_gitops_operation_duration_seconds" {
+			continue
 		}
+		for _, metric := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, l := range metric.GetLabel() {
+				labels[l.GetName()] = l.GetValue()
+			}
+			got[labels["op"]+"/"+labels["result"]] = metric.GetHistogram().GetSampleCount()
+		}
+	}
+	if want := map[string]uint64{"write/ok": 1, "teardown/error": 1, "teardown/ok": 1}; !maps.Equal(got, want) {
+		t.Errorf("gitops operation counts = %v, want %v", got, want)
 	}
 }

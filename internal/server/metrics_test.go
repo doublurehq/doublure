@@ -3,39 +3,17 @@ package server_test
 import (
 	"bytes"
 	"log/slog"
-	"maps"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/doublurehq/doublure/internal/github"
 	"github.com/doublurehq/doublure/internal/metrics"
 	"github.com/doublurehq/doublure/internal/server"
 )
-
-// deliveries scrapes m and returns its webhook delivery samples, keyed by
-// name and labels as exposed.
-func deliveries(t *testing.T, m *metrics.Metrics) map[string]float64 {
-	t.Helper()
-	rec := httptest.NewRecorder()
-	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	out := map[string]float64{}
-	for line := range strings.Lines(rec.Body.String()) {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "doublure_webhook_deliveries_total{") {
-			continue
-		}
-		i := strings.LastIndexByte(line, ' ')
-		v, err := strconv.ParseFloat(line[i+1:], 64)
-		if err != nil {
-			t.Fatalf("parse %q: %v", line, err)
-		}
-		out[line[:i]] = v
-	}
-	return out
-}
 
 // newMetricsServer is newWebhookServer recording into a fresh *Metrics.
 func newMetricsServer(t *testing.T) (*server.Server, *metrics.Metrics) {
@@ -100,8 +78,12 @@ func TestWebhookMetrics(t *testing.T) {
 			srv, m := newMetricsServer(t)
 			srv.Handler().ServeHTTP(httptest.NewRecorder(), tc.req)
 
-			if got, want := deliveries(t, m), map[string]float64{tc.want: 1}; !maps.Equal(got, want) {
-				t.Errorf("deliveries = %v, want %v", got, want)
+			expected := "# HELP doublure_webhook_deliveries_total GitHub webhook deliveries, by verified event and HTTP status.\n" +
+				"# TYPE doublure_webhook_deliveries_total counter\n" +
+				tc.want + " 1\n"
+			if err := testutil.GatherAndCompare(m.Gatherer(), strings.NewReader(expected),
+				"doublure_webhook_deliveries_total"); err != nil {
+				t.Error(err)
 			}
 		})
 	}

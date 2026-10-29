@@ -3,12 +3,11 @@ package lifecycle_test
 import (
 	"context"
 	"errors"
-	"maps"
-	"net/http"
-	"net/http/httptest"
-	"strconv"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/doublurehq/doublure/internal/gitops"
 	"github.com/doublurehq/doublure/internal/lifecycle"
@@ -16,40 +15,42 @@ import (
 	"github.com/doublurehq/doublure/internal/preview"
 )
 
-// samples scrapes m and returns its samples whose name starts with one of
-// prefixes, keyed by name and labels as exposed.
-func samples(t *testing.T, m *metrics.Metrics, prefixes ...string) map[string]float64 {
+// assertMetrics fails t unless the samples of m's metrics named names are
+// exactly want, keyed by name and labels as exposed.
+func assertMetrics(t *testing.T, m *metrics.Metrics, want map[string]float64, names ...string) {
 	t.Helper()
-	rec := httptest.NewRecorder()
-	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	out := map[string]float64{}
-	for line := range strings.Lines(rec.Body.String()) {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		i := strings.LastIndexByte(line, ' ')
-		key := line[:i]
-		if !strings.HasPrefix(key, "doublure_") {
-			continue
-		}
-		for _, p := range prefixes {
-			if strings.HasPrefix(key, p) {
-				v, err := strconv.ParseFloat(line[i+1:], 64)
-				if err != nil {
-					t.Fatalf("parse %q: %v", line, err)
-				}
-				out[key] = v
+	// headers holds the HELP and TYPE lines of the metrics these tests assert.
+	headers := map[string]string{
+		"doublure_reconciles_total": "# HELP doublure_reconciles_total Pull request reconciles, by outcome.\n" +
+			"# TYPE doublure_reconciles_total counter\n",
+		"doublure_reconcile_skips_total": "# HELP doublure_reconcile_skips_total Skipped pull request reconciles, by reason.\n" +
+			"# TYPE doublure_reconcile_skips_total counter\n",
+		"doublure_teardowns_total": "# HELP doublure_teardowns_total Preview teardowns of a pull request, by trigger and result.\n" +
+			"# TYPE doublure_teardowns_total counter\n",
+		"doublure_previews": "# HELP doublure_previews Previews in the gitops repo as of the last in-server cleanup sweep, " +
+			"0 before the first one.\n# TYPE doublure_previews gauge\n",
+		"doublure_sweep_previews_deleted_total": "# HELP doublure_sweep_previews_deleted_total " +
+			"Previews deleted by the cleanup sweep, by rule.\n# TYPE doublure_sweep_previews_deleted_total counter\n",
+	}
+	var expected strings.Builder
+	matched := 0
+	for _, name := range names {
+		var lines strings.Builder
+		for key, v := range want {
+			if key == name || strings.HasPrefix(key, name+"{") {
+				fmt.Fprintf(&lines, "%s %v\n", key, v)
+				matched++
 			}
 		}
+		if lines.Len() > 0 {
+			expected.WriteString(headers[name] + lines.String())
+		}
 	}
-	return out
-}
-
-func assertMetrics(t *testing.T, m *metrics.Metrics, want map[string]float64, prefixes ...string) {
-	t.Helper()
-	if got := samples(t, m, prefixes...); !maps.Equal(got, want) {
-		t.Errorf("metrics = %v, want %v", got, want)
+	if matched != len(want) {
+		t.Fatalf("want %v names a metric outside %v", want, names)
+	}
+	if err := testutil.GatherAndCompare(m.Gatherer(), strings.NewReader(expected.String()), names...); err != nil {
+		t.Error(err)
 	}
 }
 

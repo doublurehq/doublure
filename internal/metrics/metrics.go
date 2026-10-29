@@ -116,6 +116,15 @@ func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
 }
 
+// Gatherer returns the registry holding every collector. A nil *Metrics
+// returns a Gatherer with no metrics.
+func (m *Metrics) Gatherer() prometheus.Gatherer {
+	if m == nil {
+		return prometheus.Gatherers{}
+	}
+	return m.registry
+}
+
 // Reconcile counts one reconcile with outcome and, when it was skipped, its
 // reason.
 func (m *Metrics) Reconcile(outcome, reason string) {

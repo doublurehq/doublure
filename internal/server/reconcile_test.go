@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	gh "github.com/google/go-github/v71/github"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/doublurehq/doublure/internal/gitops"
 	"github.com/doublurehq/doublure/internal/metrics"
@@ -413,10 +412,14 @@ func TestReconcile_RecordsMetrics(t *testing.T) {
 	s, _ := newTeardownServer(t, reconcileFake(), WithMetrics(m))
 	deliver(t, s, labelEvent("labeled", "preview", "preview"))
 
-	rec := httptest.NewRecorder()
-	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	if want := `doublure_reconciles_total{outcome="deployed"} 1`; !strings.Contains(rec.Body.String(), want) {
-		t.Errorf("metrics lack %q:\n%s", want, rec.Body.String())
+	expected := `
+# HELP doublure_reconciles_total Pull request reconciles, by outcome.
+# TYPE doublure_reconciles_total counter
+doublure_reconciles_total{outcome="deployed"} 1
+`
+	err := testutil.GatherAndCompare(m.Gatherer(), strings.NewReader(expected), "doublure_reconciles_total")
+	if err != nil {
+		t.Error(err)
 	}
 }
 
