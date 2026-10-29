@@ -8,7 +8,7 @@ import (
 // BuildPreviewValues constructs a fresh PreviewValues for a slug given the
 // service catalog. The triggering service (serviceName) is pinned to
 // commitSha and carries metadata; every other catalog service renders as a
-// bare entry tracking main.
+// bare entry tracking its branch.
 //
 // The order of services in the result matches the order of the catalog slice.
 func BuildPreviewValues(serviceName, commitSha string, catalog []string, inputs DeployInputs) PreviewValues {
@@ -29,7 +29,7 @@ func BuildPreviewValues(serviceName, commitSha string, catalog []string, inputs 
 //     but preserve the original created-at;
 //   - if the service is absent, append a new pinned entry.
 //
-// Other services are left untouched (main-tracking entries keep their state).
+// Other services are left untouched (branch-tracking entries keep their state).
 func UpdatePreviewValues(existing PreviewValues, serviceName, commitSha string, inputs DeployInputs) PreviewValues {
 	for i := range existing.Services {
 		if existing.Services[i].Name != serviceName {
@@ -53,7 +53,7 @@ func UpdatePreviewValues(existing PreviewValues, serviceName, commitSha string, 
 
 // UnpinPR returns a copy of vals where every entry deployed by the PR
 // owner/repo#number (matched on its metadata pr-url; owner and repo compare
-// case-insensitively) is reset to a bare main-tracking entry. It also returns
+// case-insensitively) is reset to a bare branch-tracking entry. It also returns
 // the names of the unpinned services in file order, and whether any entry is
 // still pinned to a commit. vals is never mutated.
 func UnpinPR(vals PreviewValues, owner, repo string, number int) (PreviewValues, []string, bool) {

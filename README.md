@@ -2,14 +2,14 @@
 
 Per-pull-request preview environments for teams running Kubernetes and ArgoCD. Self-hosted, open source.
 
-Every branch gets its own isolated, full-stack environment: the services changed in the PR run at their PR version, every other service runs at `main`. doublure writes the desired state to your gitops repo; your ArgoCD deploys it. doublure never touches your cluster directly.
+Every branch gets its own isolated, full-stack environment: the services changed in the PR run at their PR version, every other service runs at its branch (default `main`). doublure writes the desired state to your gitops repo; your ArgoCD deploys it. doublure never touches your cluster directly.
 
 ## Why
 
 When code is written at machine speed, the bottleneck is validating and integrating it, and a shared staging environment becomes a queue. doublure applies the practices from [AI Writes Code in Hours. It Still Takes Weeks to Ship.](https://medium.com/@aminebenseddik/ai-writes-code-in-hours-it-still-takes-weeks-to-ship-7fb07f87cc07):
 
 - One isolated preview per branch, or per `preview:<name>` label, across repos: PRs on the same branch, or with the same `preview:<name>` label, share one preview.
-- Changed services run at their PR commit, everything else at `main`.
+- Changed services run at their PR commit, everything else at their branch (default `main`).
 - CI builds once; doublure only writes desired state. It never builds images and never touches the cluster.
 - Argo CD deploys from git.
 - Previews are torn down when their PR closes or the label is removed, and swept so they don't accumulate: the sweep also unpins open PRs whose label moved, conflicts or is gone.
@@ -29,7 +29,7 @@ To test changes from several repos together, either:
 - use the same branch name in every repo, or
 - label every PR `preview:<name>` (for example `preview:pricing`), whatever its branch. Labels are per repo: create the `preview:<name>` label in each repo first; doublure never creates labels.
 
-Each PR pins its own services in the preview `<name>` (slugified), and every other service runs at `main`.
+Each PR pins its own services in the preview `<name>` (slugified), and every other service runs at its branch (default `main`).
 
 - A named label wins over the plain `preview` label. A PR with two `preview:<name>` labels for different names gets no preview, and a comment asks to keep one.
 - Moving a PR to another label (plain to named, named to named, named to plain) unpins it from its old preview before deploying it to the new one.

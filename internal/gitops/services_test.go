@@ -358,3 +358,187 @@ func TestServicesForRepo(t *testing.T) {
 		})
 	}
 }
+
+func TestParseServices_ServiceCharts(t *testing.T) {
+	tests := []struct {
+		name   string
+		charts string
+		want   map[string]string
+	}{
+		{name: "absent block"},
+		{name: "null block", charts: "serviceCharts:\n"},
+		{name: "null block tilde", charts: "serviceCharts: ~\n"},
+		{
+			name: "full entry",
+			charts: `serviceCharts:
+  backend-1:
+    branch: master
+    path: deploy/helm
+    imageTagParam: image.tag
+    hostParam: ingress.hostname
+    valueFiles:
+      - values-preview.yaml
+      - /shared/values.yaml
+`,
+			want: map[string]string{"backend-1": "master"},
+		},
+		{name: "null entry", charts: "serviceCharts:\n  backend-1:\n"},
+		{name: "null field", charts: "serviceCharts:\n  backend-1:\n    branch:\n    path: ~\n"},
+		{name: "empty valueFiles", charts: "serviceCharts:\n  backend-1:\n    valueFiles: []\n"},
+		{name: "entry without branch", charts: "serviceCharts:\n  backend-1:\n    path: deploy/helm\n"},
+		{
+			name:   "branches only for entries setting one",
+			charts: "serviceCharts:\n  backend-1:\n    branch: master\n  backend-2:\n    path: chart\n  front:\n    branch: develop\n",
+			want:   map[string]string{"backend-1": "master", "front": "develop"},
+		},
+		{
+			name:   "aliased fields",
+			charts: "b: &b master\nf: &f [values.yaml]\nserviceCharts:\n  backend-1:\n    branch: *b\n    valueFiles: *f\n",
+			want:   map[string]string{"backend-1": "master"},
+		},
+		{
+			name:   "quoted yaml 1.1 boolean",
+			charts: "serviceCharts:\n  backend-1:\n    branch: \"no\"\n",
+			want:   map[string]string{"backend-1": "no"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := gitops.ParseServices([]byte(serviceRepos + tt.charts))
+			if err != nil {
+				t.Fatalf("ParseServices: %v", err)
+			}
+			if !reflect.DeepEqual(got.Branches, tt.want) {
+				t.Errorf("Branches = %#v, want %#v", got.Branches, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseServices_MalformedServiceCharts(t *testing.T) {
+	const prefix = "services.yaml: malformed serviceCharts block: "
+	tests := []struct {
+		name   string
+		charts string
+		want   string
+	}{
+		{
+			"block a sequence",
+			"serviceCharts: [a]\n",
+			"services.yaml: yaml: unmarshal errors:\n  line 5: cannot unmarshal !!seq into map[string]*gitops.serviceChart",
+		},
+		{
+			"block a scalar",
+			"serviceCharts: x\n",
+			"services.yaml: yaml: unmarshal errors:\n  line 5: cannot unmarshal !!str `x` into map[string]*gitops.serviceChart",
+		},
+		{
+			"entry not a mapping",
+			"serviceCharts:\n  backend-1: x\n",
+			"services.yaml: yaml: unmarshal errors:\n  line 6: cannot unmarshal !!str `x` into gitops.serviceChart",
+		},
+		{
+			"unknown field",
+			"serviceCharts:\n  backend-1:\n    brnach: master\n",
+			"services.yaml: yaml: unmarshal errors:\n  line 7: field brnach not found in type gitops.serviceChart",
+		},
+		{
+			"not in serviceRepos",
+			"serviceCharts:\n  api:\n    branch: master\n",
+			prefix + "serviceCharts.api: not in serviceRepos",
+		},
+		{
+			"null entry not in serviceRepos",
+			"serviceCharts:\n  api:\n",
+			prefix + "serviceCharts.api: not in serviceRepos",
+		},
+		{
+			"first invalid entry in sorted order",
+			"serviceCharts:\n  front:\n    branch: \"\"\n  backend-2:\n    path: \"\"\n",
+			prefix + "serviceCharts.backend-2.path: must be a non-empty string",
+		},
+		{
+			"first invalid field in order",
+			"serviceCharts:\n  backend-1:\n    valueFiles: x\n    hostParam: 1\n",
+			prefix + "serviceCharts.backend-1.hostParam: must be a non-empty string",
+		},
+		{
+			"branch empty",
+			"serviceCharts:\n  backend-1:\n    branch: \"\"\n",
+			prefix + "serviceCharts.backend-1.branch: must be a non-empty string",
+		},
+		{
+			"branch numeric",
+			"serviceCharts:\n  backend-1:\n    branch: 123\n",
+			prefix + "serviceCharts.backend-1.branch: must be a non-empty string",
+		},
+		{
+			"branch boolean",
+			"serviceCharts:\n  backend-1:\n    branch: true\n",
+			prefix + "serviceCharts.backend-1.branch: must be a non-empty string",
+		},
+		{
+			"path a mapping",
+			"serviceCharts:\n  backend-1:\n    path: {a: b}\n",
+			prefix + "serviceCharts.backend-1.path: must be a non-empty string",
+		},
+		{
+			"imageTagParam a sequence",
+			"serviceCharts:\n  backend-1:\n    imageTagParam: [image.tag]\n",
+			prefix + "serviceCharts.backend-1.imageTagParam: must be a non-empty string",
+		},
+		{
+			"hostParam empty",
+			"serviceCharts:\n  backend-1:\n    hostParam: \"\"\n",
+			prefix + "serviceCharts.backend-1.hostParam: must be a non-empty string",
+		},
+		{
+			"valueFiles not a list",
+			"serviceCharts:\n  backend-1:\n    valueFiles: values.yaml\n",
+			prefix + "serviceCharts.backend-1.valueFiles: must be a list of non-empty strings",
+		},
+		{
+			"valueFiles holding an empty string",
+			"serviceCharts:\n  backend-1:\n    valueFiles: [values.yaml, \"\"]\n",
+			prefix + "serviceCharts.backend-1.valueFiles: must be a list of non-empty strings",
+		},
+		{
+			"valueFiles holding a number",
+			"serviceCharts:\n  backend-1:\n    valueFiles: [1]\n",
+			prefix + "serviceCharts.backend-1.valueFiles: must be a list of non-empty strings",
+		},
+		{
+			"valueFiles holding a null",
+			"serviceCharts:\n  backend-1:\n    valueFiles: [~]\n",
+			prefix + "serviceCharts.backend-1.valueFiles: must be a list of non-empty strings",
+		},
+		{
+			"branch unquoted yaml 1.1 boolean",
+			"serviceCharts:\n  backend-1:\n    branch: no\n",
+			prefix + "serviceCharts.backend-1.branch: \"no\" must be quoted: YAML 1.1 reads it as a boolean",
+		},
+		{
+			"path unquoted yaml 1.1 boolean",
+			"serviceCharts:\n  backend-1:\n    path: on\n",
+			prefix + "serviceCharts.backend-1.path: \"on\" must be quoted: YAML 1.1 reads it as a boolean",
+		},
+		{
+			"imageTagParam unquoted yaml 1.1 boolean",
+			"serviceCharts:\n  backend-1:\n    imageTagParam: Y\n",
+			prefix + "serviceCharts.backend-1.imageTagParam: \"Y\" must be quoted: YAML 1.1 reads it as a boolean",
+		},
+		{
+			"valueFiles holding an unquoted yaml 1.1 boolean",
+			"serviceCharts:\n  backend-1:\n    valueFiles: [off]\n",
+			prefix + "serviceCharts.backend-1.valueFiles: \"off\" must be quoted: YAML 1.1 reads it as a boolean",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := gitops.ParseServices([]byte(serviceRepos + tt.charts))
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("err = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}

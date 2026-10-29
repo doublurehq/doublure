@@ -5,3 +5,8 @@ services:
 
 serviceRepos:
   backend-1: "https://github.com/acme/backend-1.git"
+
+serviceCharts:
+  backend-1:
+    branch: master
+    imageTagParam: image.tag

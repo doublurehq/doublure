@@ -95,7 +95,9 @@ func teardown(ctx context.Context, api TeardownAPI, tt Target, reason string, co
 		teardownCommentFailed(ctx, tt, err)
 		return
 	}
-	summary := preview.BuildSummary(tt.Slug, result.Values, catalog.URLs, result.CommitMessage, result.CommitURL)
+	summary := preview.BuildSummary(
+		tt.Slug, result.Values, catalog.URLs, catalog.Branches, result.CommitMessage, result.CommitURL,
+	)
 	if fanErr := api.FanOutPRComments(ctx, result.Values, summary); fanErr != nil {
 		teardownCommentFailed(ctx, tt, fanErr)
 	}
