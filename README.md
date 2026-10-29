@@ -20,7 +20,7 @@ When code is written at machine speed, the bottleneck is validating and integrat
 2. Adding the `preview` label to the PR makes doublure write `previews/<slug>/values.yaml` (every catalog service, the PR's at its head SHA) and comment on the PR; a push to the labeled PR updates it. The slug is the PR's branch, slugified; a `preview:<name>` label picks the preview name instead.
 3. An ArgoCD ApplicationSet picks up `previews/*` and deploys one namespace per preview, one Application per service.
 4. Removing the label or closing the PR unpins its service, or deletes the file when no PR remains, and ArgoCD prunes the preview.
-5. `doublure cleanup` (an hourly CronJob) sweeps every preview: it deletes previews with no pinned service, or with no deploy within `CLEANUP_TTL` when set, and tears down the pins of closed PRs that step 4 missed, and of open PRs whose label moved, conflicts or is gone. ArgoCD prunes what it removes.
+5. `doublure cleanup` (in the server on an interval, or an hourly CronJob) sweeps every preview: it deletes previews with no pinned service, or with no deploy within `CLEANUP_TTL` when set, and tears down the pins of closed PRs that step 4 missed, and of open PRs whose label moved, conflicts or is gone. ArgoCD prunes what it removes.
 
 ### Sharing a preview across repos
 
@@ -76,6 +76,9 @@ Configuration (env):
 | `GITOPS_REPO` | yes | `owner/repo` |
 | `DOUBLURE_DEPLOY_TOKEN` | yes | bearer token for manual `/v1/deploy` calls |
 | `LISTEN_ADDR` | no | default `:8080` |
+| `METRICS_ADDR` | no | Prometheus `/metrics` listener, default `:9090`; set to empty to disable |
+| `CLEANUP_INTERVAL` | no | `serve` runs the cleanup sweep this often, a Go duration of at least `1m` (e.g. `1h`); unset disables it |
+| `CLEANUP_TTL` | no | sweep expiry, a Go duration (e.g. `168h`), for `cleanup` and the in-server sweep; unset disables expiry |
 
 Local setup: [DEVELOPMENT.md](DEVELOPMENT.md).
 

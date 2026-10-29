@@ -111,13 +111,14 @@ helm install doublure oci://ghcr.io/doublurehq/charts/doublure -n doublure \
   --set config.gitopsRepo="$GITOPS_REPO" \
   --set existingSecret=doublure \
   --set ingress.enabled=true --set ingress.host=doublure.example.com \
-  --set cleanup.enabled=true \
+  --set cleanup.interval=1h \
   -f values.yaml
 ```
 
 - Pin `--version` in production. The image tag defaults to the chart `appVersion`.
 - The Ingress also exposes `POST /v1/deploy`, the manual trigger, protected by the `deploy-token` bearer token (see [README](../README.md)).
 - `cleanup.ttl` (e.g. `168h`) is optional: it also deletes previews with no deploy for that long.
+- `cleanup.interval=1h` runs the cleanup sweep in the server, which exports its metrics (with the Prometheus Operator, scrape them with `metrics.serviceMonitor.enabled=true` and `metrics.serviceMonitor.labels` matching its selector, e.g. `release: <kube-prometheus-stack release>`); `cleanup.enabled=true`, an hourly CronJob without metrics, is the alternative, not to combine with it.
 - Keep `replicaCount: 1`.
 
 Once the Secret exists, delete the local `.env` and PEM.
