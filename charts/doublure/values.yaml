@@ -53,6 +53,13 @@ metrics:
     # Scrape interval, e.g. 30s; empty uses Prometheus' default.
     interval: ""
 
+# Grafana dashboard as a ConfigMap, loaded by the Grafana sidecar
+# (kube-prometheus-stack default) through its labels.
+dashboard:
+  enabled: false
+  labels:
+    grafana_dashboard: "1"
+
 # Stale-preview cleanup. Use either cleanup.enabled (the CronJob, no metrics)
 # or cleanup.interval (in the server, with metrics), not both.
 cleanup:

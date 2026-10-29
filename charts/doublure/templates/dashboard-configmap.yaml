@@ -1,0 +1,14 @@
+{{- if .Values.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "doublure.fullname" . }}-dashboard
+  labels:
+    {{- include "doublure.labels" . | nindent 4 }}
+    {{- with .Values.dashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  doublure.json: |-
+    {{- .Files.Get "dashboards/doublure.json" | nindent 4 }}
+{{- end }}

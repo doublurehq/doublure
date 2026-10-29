@@ -1,0 +1,184 @@
+{
+  "id": null,
+  "uid": "doublure",
+  "title": "doublure",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus" }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Live previews",
+      "description": "Previews in the gitops repo as of the last in-server sweep. Needs cleanup.interval: reads 0 until the first in-server sweep.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "doublure_previews"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Deploys per hour",
+      "description": "Pull request reconciles that deployed a service, from webhooks. Not POST /v1/deploy calls.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(increase(doublure_reconciles_total{outcome=\"deployed\"}[1h]))",
+          "legendFormat": "deploys"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Teardowns per hour by trigger",
+      "description": "Teardowns of a pull request from a preview that deleted or unpinned it, by trigger. Previews deleted by sweep rules 1 and 2 are in Zombies swept, 24h.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (trigger) (increase(doublure_teardowns_total{result=~\"deleted|unpinned\"}[1h]))",
+          "legendFormat": "{{trigger}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Spin-up p50 / p90",
+      "description": "Time from doublure's gitops write to the service's Argo CD Application synced and Healthy, over the last hour. Needs the Argo CD notifications callback.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(doublure_preview_spinup_seconds_bucket[1h])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.9, sum by (le) (rate(doublure_preview_spinup_seconds_bucket[1h])))",
+          "legendFormat": "p90"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "bargauge",
+      "title": "Spin-up p90 by service",
+      "description": "p90 spin-up time per service over the last 24h. Needs the Argo CD notifications callback.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.9, sum by (le, service) (rate(doublure_preview_spinup_seconds_bucket[24h])))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Zombies swept, 24h",
+      "description": "Previews deleted by the cleanup sweep over the last 24h: rule 1 (no pin) and rule 2 (TTL).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum(increase(doublure_sweep_previews_deleted_total[24h]))"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Reconcile skips by reason",
+      "description": "Skipped pull request reconciles over the last 24h, by reason.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (reason) (increase(doublure_reconcile_skips_total[24h]))",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Webhook deliveries by status",
+      "description": "GitHub webhook deliveries per second, by HTTP status.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "sum by (status) (rate(doublure_webhook_deliveries_total[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Gitops operation p90",
+      "description": "p90 duration of gitops write and teardown operations, 409 retries included, by operation.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 24, "w": 16, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "histogram_quantile(0.9, sum by (le, op) (rate(doublure_gitops_operation_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{op}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Last successful sweep",
+      "description": "Time of the last successful in-server cleanup sweep. Needs cleanup.interval: reads 0 until the first in-server sweep.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 16, "y": 24, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "dateTimeFromNow" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "expr": "doublure_sweep_last_success_timestamp_seconds * 1000"
+        }
+      ]
+    }
+  ]
+}
