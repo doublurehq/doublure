@@ -20,6 +20,31 @@ services: []
 
 serviceRepos: {}
 
+# serviceCharts: optional per-service chart settings, read from the gitops
+# repo's services.yaml next to serviceRepos. Every key is optional; a service
+# without an entry uses every default. doublure validates the block; this chart
+# does not.
+#
+# serviceCharts:
+#   backend-1:
+#     branch: master              # default "main": targetRevision of unpinned services
+#     path: deploy/helm           # default "k8s/": chart path in the service repo
+#     imageTagParam: image.tag    # default "app.image.tag": Helm parameter set to the image tag
+#     hostParam: ingress.hostname # default "app.ingress.host": Helm parameter set to the preview host
+#     valueFiles:                 # default none: extra values files, applied in order
+#       - values-preview.yaml
+#
+# Argo CD resolves each valueFiles entry: a relative path is joined to the
+# chart path, a path starting with "/" is joined to the service repo root, and a
+# URL with a scheme is fetched remotely (or rejected when the scheme is not
+# allowed). A path resolving outside the repo root, or to the root itself, is
+# rejected, and $<ref>/ paths are not supported. A missing file fails the sync.
+#
+# hostParam is passed as a Helm --set, so a list-indexed name such as
+# ingress.hosts[0].host replaces the chart's default list: the full list (with
+# its paths) and ingress.enabled: true must then come from a file in valueFiles.
+serviceCharts: {}
+
 # Ingress hosts come from each service entry's host, written by doublure from
 # the preview block of the gitops repo's services.yaml, and are passed as the
 # Helm parameter app.ingress.host. An entry without host gets no ingress host.

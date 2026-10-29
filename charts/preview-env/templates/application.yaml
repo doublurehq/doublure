@@ -1,4 +1,5 @@
 {{- range .Values.services }}
+{{- $c := index ($.Values.serviceCharts | default dict) .name | default dict }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -27,15 +28,21 @@ spec:
   project: {{ $.Release.Name }}
   source:
     repoURL: "{{ index $.Values.serviceRepos .name }}"
-    targetRevision: {{ if .commitSha }}{{ .commitSha }}{{ else }}main{{ end }}
-    path: k8s/
+    targetRevision: {{ if .commitSha }}{{ .commitSha | quote }}{{ else }}{{ $c.branch | default "main" | quote }}{{ end }}
+    path: {{ $c.path | default "k8s/" | quote }}
     helm:
       releaseName: {{ .name }}
+      {{- with $c.valueFiles }}
+      valueFiles:
+        {{- range . }}
+        - {{ . | quote }}
+        {{- end }}
+      {{- end }}
       parameters:
-        - name: app.image.tag
+        - name: {{ $c.imageTagParam | default "app.image.tag" | quote }}
           value: {{ if .commitSha }}{{ .commitSha | quote }}{{ else }}"$ARGOCD_APP_REVISION"{{ end }}
         {{- if .host }}
-        - name: app.ingress.host
+        - name: {{ $c.hostParam | default "app.ingress.host" | quote }}
           value: {{ .host | quote }}
         {{- end }}
   destination:

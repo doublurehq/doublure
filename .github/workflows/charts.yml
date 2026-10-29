@@ -131,6 +131,36 @@ jobs:
             exit 1
           fi
 
+      - name: Render preview-env with serviceCharts overrides
+        run: |
+          out=$(helm template preview-x charts/preview-env -f - <<'EOF'
+          serviceRepos:
+            api: https://github.com/acme/api.git
+            front: https://github.com/acme/front.git
+          services:
+            - name: api
+              host: api-x.example.com
+            - name: front
+              commitSha: abc123
+          serviceCharts:
+            api:
+              branch: master
+              path: deploy/helm
+              imageTagParam: image.tag
+              hostParam: ingress.hostname
+              valueFiles: [values-preview.yaml]
+          EOF
+          )
+          got=$(echo "$out" | yq -N 'select(.kind == "Application") | .metadata.name + " " + .spec.source.targetRevision + " " + .spec.source.path + " " + (.spec.source.helm.valueFiles // "absent" | to_json(0)) + " " + ([.spec.source.helm.parameters[] | .name + "=" + .value] | join(","))')
+          # shellcheck disable=SC2016
+          want='preview-x-api master deploy/helm ["values-preview.yaml"] image.tag=$ARGOCD_APP_REVISION,ingress.hostname=api-x.example.com
+          preview-x-front abc123 k8s/ "absent" app.image.tag=abc123'
+          if [ "$got" != "$want" ]; then
+            echo "::error::serviceCharts overrides do not render as expected"
+            printf 'got:\n%s\nwant:\n%s\n' "$got" "$want"
+            exit 1
+          fi
+
       - name: Render doublure with all components
         run: helm template t charts/doublure -f charts/doublure/ci/test-values.yaml --set ingress.enabled=true,ingress.host=doublure.example.com,cleanup.enabled=true
 
