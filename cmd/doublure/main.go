@@ -36,6 +36,9 @@ const cleanupTimeout = 10 * time.Minute
 // readHeaderTimeout bounds reading a request's headers on every listener.
 const readHeaderTimeout = 10 * time.Second
 
+// minCleanupInterval is the shortest CLEANUP_INTERVAL accepted.
+const minCleanupInterval = time.Minute
+
 // sweepAPI is the gitops client with the metrics recorder lifecycle.Sweep
 // expects. A nil *metrics.Metrics records nothing.
 type sweepAPI struct {
@@ -68,6 +71,11 @@ func serveCmd() *cobra.Command {
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
+			}
+
+			interval, ttl, err := sweepSchedule()
+			if err != nil {
+				return err
 			}
 
 			var m *metrics.Metrics
@@ -103,6 +111,7 @@ func serveCmd() *cobra.Command {
 				}
 			}()
 			metricsSrv := startMetricsServer(ctx, cfg.MetricsAddr, m)
+			startSweepLoop(ctx, srv, sweepAPI{Client: gitopsClient, Metrics: m}, m, interval, ttl)
 
 			<-ctx.Done()
 			slog.InfoContext(ctx, "shutting down server") //nolint:sloglint // no scoped logger yet
@@ -138,6 +147,85 @@ func startMetricsServer(ctx context.Context, addr string, m *metrics.Metrics) *h
 		}
 	}()
 	return metricsSrv
+}
+
+// sweepSchedule reads CLEANUP_INTERVAL and, when it is set, CLEANUP_TTL: the
+// in-server sweep's interval (0 when off) and TTL.
+func sweepSchedule() (time.Duration, time.Duration, error) {
+	interval, err := parseCleanupInterval(os.Getenv("CLEANUP_INTERVAL"))
+	if err != nil || interval == 0 {
+		return 0, 0, err
+	}
+	ttl, err := parseCleanupTTL(os.Getenv("CLEANUP_TTL"))
+	if err != nil {
+		return 0, 0, err
+	}
+	return interval, ttl, nil
+}
+
+// startSweepLoop runs runSweepLoop in the background of srv, so shutdown
+// waits for it. It starts nothing when interval is 0.
+func startSweepLoop(
+	ctx context.Context,
+	srv *server.Server,
+	api lifecycle.SweepAPI,
+	m *metrics.Metrics,
+	interval, ttl time.Duration,
+) {
+	if interval == 0 {
+		return
+	}
+	slog.Default().InfoContext(ctx, "starting cleanup loop",
+		slog.String("interval", interval.String()),
+		slog.String("ttl", ttl.String()),
+	)
+	srv.Go(func() {
+		runSweepLoop(ctx, api, m, interval, ttl, time.Now)
+	})
+}
+
+// runSweepLoop sweeps every interval until ctx is done, starting one interval
+// from now. Runs never overlap: a tick that comes during a run waits for it.
+// Each run is bounded by cleanupTimeout and cancelled with ctx.
+func runSweepLoop(
+	ctx context.Context,
+	api lifecycle.SweepAPI,
+	m *metrics.Metrics,
+	interval, ttl time.Duration,
+	now func() time.Time,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		runSweep(ctx, api, m, ttl, now)
+	}
+}
+
+// runSweep runs one sweep and records it, unless ctx was done: a sweep
+// cancelled by shutdown is not recorded, one that hit cleanupTimeout is
+// recorded as failed.
+func runSweep(
+	ctx context.Context,
+	api lifecycle.SweepAPI,
+	m *metrics.Metrics,
+	ttl time.Duration,
+	now func() time.Time,
+) {
+	sctx, cancel := context.WithTimeout(ctx, cleanupTimeout)
+	defer cancel()
+	err := lifecycle.Sweep(sctx, api, now().UTC(), ttl)
+	if ctx.Err() != nil {
+		return
+	}
+	if err != nil {
+		slog.Default().ErrorContext(ctx, "cleanup failed", slog.String("err", err.Error()))
+	}
+	m.SweepRun(err == nil, now())
 }
 
 // shutdownServers shuts every non-nil server down concurrently, within ctx,
@@ -209,6 +297,20 @@ func cleanupCmd() *cobra.Command {
 			return lifecycle.Sweep(ctx, sweepAPI{Client: client}, time.Now().UTC(), ttl)
 		},
 	}
+}
+
+// parseCleanupInterval parses CLEANUP_INTERVAL. Empty means no in-server
+// sweep (0); otherwise it must be a Go duration of at least
+// minCleanupInterval.
+func parseCleanupInterval(raw string) (time.Duration, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	interval, err := time.ParseDuration(raw)
+	if err != nil || interval < minCleanupInterval {
+		return 0, fmt.Errorf("CLEANUP_INTERVAL must be a duration of at least 1m, got %q", raw)
+	}
+	return interval, nil
 }
 
 // parseCleanupTTL parses CLEANUP_TTL. Empty means no expiry (0); otherwise it
