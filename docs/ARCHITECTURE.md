@@ -299,6 +299,26 @@ doublure never reads the cluster, so Argo CD's notifications controller tells it
 - Late samples: the notifications controller also sends the trigger for already-Healthy pinned Applications the first time the configuration is applied, and re-sends it after a failed delivery (doublure restarting, a 5xx). Each is recorded as the time since `updated-at`, up to the 24h bound, so it usually lands in `+Inf`. Read samples above the top bucket (1800 s) as backfill or retries, not real spin-ups.
 - Every valid, authorized event gets 204, recorded or not, and logs `argocd event` with `app`, `service`, `preview`, `revision`, `result` and, when recorded, `spinup_seconds`.
 
+### Preview deployments on GitHub
+
+Argo CD, not doublure, signals on GitHub that a PR's code is running in its preview: health is Argo CD's call. Its notifications controller posts GitHub Deployments through its own GitHub App (Deployments R/W, Metadata R); doublure makes no Deployments calls. Configuration: [`examples/argocd/github-deployments-values.yaml`](../examples/argocd/github-deployments-values.yaml), applied after `notifications-values.yaml` (setup: INSTALL [Preview deployments on GitHub](INSTALL.md#preview-deployments-on-github-optional)).
+
+- Both triggers apply only to pinned preview service Applications: those whose `preview.doublure.dev/vcs.ref.revision` annotation is not empty.
+- `on-preview-deployed` fires when the Application is synced and Healthy, once per `syncResult.revision` (the PR head SHA, since a pinned service's `targetRevision` is its commit SHA). It posts status `success` on the service repo (`spec.source.repoURL`) at that revision, with `environment_url` built from the `preview.doublure.dev/host` annotation, which `preview-env` 0.5.0 sets from the service's `host`. The deployment is created with `auto_merge: false` and `required_contexts: []`, so an older ref or a red commit still gets one.
+- `on-preview-deleted` fires when the Application has a `deletionTimestamp` and posts `inactive` on the deployment for its current `syncResult.revision`.
+- The environment is `preview-<slug>-<service>`, one per preview service. A new `success` on it marks the prior `success` deployments `inactive` (GitHub's `auto_inactive`).
+
+Limitations:
+
+1. `inactive` on delete is best effort: the controller only sees the deletion if it processes the update before the Application's finalizer completes. It looks up the deployment by the current revision, so if that SHA never went Healthy it creates an extra `inactive` deployment for it, and the earlier SHA's `success` stays.
+2. A PR that leaves a surviving preview keeps its last `success`, because its Application is updated, not deleted.
+3. Failed notifications are not retried.
+4. Applying the config posts `success` for every already-Healthy pinned Application, as `oncePer` has no prior state.
+5. Environments accumulate on the service repos and can be deleted by hand.
+6. The URL is the host root; the expose path is not applied.
+7. One App installation covers all service repos (`service.github` takes one `installationID`).
+8. For a pinned service with no host (for example `postgres`, not in `expose`), `environment_url` is sent as `""`. Whether GitHub accepts that is not verified; the notifications controller log shows the result.
+
 ### Dashboard
 
 [`charts/doublure/dashboards/doublure.json`](../charts/doublure/dashboards/doublure.json) is a Grafana dashboard (uid `doublure`) over these metrics: live previews, deploys and teardowns per hour, spin-up p50/p90 and p90 by service, zombies swept, reconcile skips by reason, webhook deliveries by status, gitops operation p90 and the last successful sweep. It picks its Prometheus data source through a `datasource` variable. With `dashboard.enabled`, the chart renders it as a ConfigMap labelled `dashboard.labels` (default `grafana_dashboard: "1"`), which the Grafana sidecar of kube-prometheus-stack loads; the JSON also imports on its own. Live previews and last successful sweep need `cleanup.interval`, and the spin-up panels need the Argo CD notifications callback.

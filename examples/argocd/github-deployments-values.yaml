@@ -1,0 +1,89 @@
+# Argo CD notifications posting GitHub Deployments for doublure previews:
+# values for the argo-helm argo-cd chart.
+#
+# When a pinned preview service's Application is synced and Healthy at a
+# revision (the PR head SHA), the notifications controller posts a deployment
+# status `success` on the service repo at that revision, with environment_url
+# set to the service's preview host. When the Application is deleted, it posts
+# `inactive` (best effort). Argo CD authenticates with its own GitHub App.
+#
+# Requires notifications-values.yaml (spin-up time) and must come after it on
+# the command line. It repeats the spin-up subscription, because Helm replaces
+# lists: the subscriptions below are the full list.
+#
+# Apply to your Argo CD release, passing the App credentials at install time
+# (this file holds no secret):
+#
+#   helm upgrade argocd argo/argo-cd -n argocd --version <your installed argo-cd chart version> \
+#     --reuse-values -f notifications-values.yaml -f github-deployments-values.yaml \
+#     --set-string notifications.secret.items.github-appID="$ARGOCD_GITHUB_APP_ID" \
+#     --set-string notifications.secret.items.github-installationID="$ARGOCD_GITHUB_INSTALLATION_ID" \
+#     --set-file notifications.secret.items.github-privateKey=<path to the App's .pem>
+#
+# Argo CD installed without Helm: put the keys service.github,
+# template.doublure-preview-deployed, template.doublure-preview-deleted,
+# trigger.on-preview-deployed, trigger.on-preview-deleted and subscriptions
+# (with both entries below) under `data` of the argocd-notifications-cm
+# ConfigMap, and the github-appID, github-installationID and github-privateKey
+# items in the argocd-notifications-secret Secret.
+notifications:
+  notifiers:
+    service.github: |
+      appID: $github-appID
+      installationID: $github-installationID
+      privateKey: $github-privateKey
+
+  templates:
+    template.doublure-preview-deployed: |
+      message: "{{ index .app.metadata.labels \"app.kubernetes.io/name\" }} healthy in preview {{ index .app.metadata.labels \"app.kubernetes.io/instance\" }}"
+      github:
+        repoURLPath: "{{.app.spec.source.repoURL}}"
+        revisionPath: "{{.app.status.operationState.syncResult.revision}}"
+        deployment:
+          state: success
+          environment: "preview-{{ index .app.metadata.labels \"app.kubernetes.io/instance\" }}-{{ index .app.metadata.labels \"app.kubernetes.io/name\" }}"
+          # Use http:// when preview.tls: false.
+          environmentURL: "{{ with index .app.metadata.annotations \"preview.doublure.dev/host\" }}https://{{ . }}/{{ end }}"
+          requiredContexts: []
+          autoMerge: false
+          transientEnvironment: false
+    template.doublure-preview-deleted: |
+      message: "preview {{ index .app.metadata.labels \"app.kubernetes.io/instance\" }} removed"
+      github:
+        repoURLPath: "{{.app.spec.source.repoURL}}"
+        revisionPath: "{{.app.status.operationState.syncResult.revision}}"
+        deployment:
+          state: inactive
+          environment: "preview-{{ index .app.metadata.labels \"app.kubernetes.io/instance\" }}-{{ index .app.metadata.labels \"app.kubernetes.io/name\" }}"
+          # Use http:// when preview.tls: false.
+          environmentURL: "{{ with index .app.metadata.annotations \"preview.doublure.dev/host\" }}https://{{ . }}/{{ end }}"
+          requiredContexts: []
+          autoMerge: false
+          transientEnvironment: false
+
+  triggers:
+    # Fires once per revision of a pinned service's Application.
+    trigger.on-preview-deployed: |
+      - when: app.status?.operationState?.phase in ['Succeeded'] and app.status?.health?.status == 'Healthy' and app.metadata.annotations['preview.doublure.dev/vcs.ref.revision'] != ''
+        oncePer: app.status?.operationState?.syncResult?.revision
+        send: [doublure-preview-deployed]
+    # Best effort: fires only if the controller sees the deletion before the
+    # Application's finalizer completes.
+    trigger.on-preview-deleted: |
+      - when: app.metadata.deletionTimestamp != nil and app.metadata.annotations['preview.doublure.dev/vcs.ref.revision'] != ''
+        oncePer: app.metadata.name
+        send: [doublure-preview-deleted]
+
+  # Full list: repeats the spin-up subscription from notifications-values.yaml.
+  subscriptions:
+    - recipients:
+        - doublure
+      triggers:
+        - on-preview-healthy
+      selector: app.kubernetes.io/part-of=preview-environments,app.kubernetes.io/managed-by=argocd
+    - recipients:
+        - github
+      triggers:
+        - on-preview-deployed
+        - on-preview-deleted
+      selector: app.kubernetes.io/part-of=preview-environments,app.kubernetes.io/managed-by=argocd
