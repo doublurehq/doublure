@@ -183,8 +183,18 @@ Check: the PR shows the deployment, and `kubectl -n argocd logs deploy/argocd-no
 
 To remove the setup later:
 
-1. Re-run the [Spin-up time](#spin-up-time-optional) `helm upgrade … --reuse-values -f notifications-values.yaml`. This restores the single-entry `subscriptions` list. `service.github` and the `template.doublure-preview-*` and `trigger.on-preview-*` keys stay in the release: they are maps, so `--reuse-values` keeps them, but nothing subscribes to them.
-2. Delete the three secret items, which Helm leaves in the Secret:
+1. Re-run the [Spin-up time](#spin-up-time-optional) `helm upgrade` with `-f notifications-values.yaml`, setting the three secret items to `null` so they leave the release values:
+
+   ```bash
+   helm upgrade argocd argo/argo-cd -n argocd --version <your installed argo-cd chart version> \
+     --reuse-values -f notifications-values.yaml \
+     --set notifications.secret.items.github-appID=null \
+     --set notifications.secret.items.github-installationID=null \
+     --set notifications.secret.items.github-privateKey=null
+   ```
+
+   This restores the single-entry `subscriptions` list. `service.github` and the `template.doublure-preview-*` and `trigger.on-preview-*` keys stay in the release: they are maps, so `--reuse-values` keeps them, but nothing subscribes to them.
+2. Helm no longer renders these items, but removing a `stringData` key does not delete it from the live Secret's `data`, so delete them:
 
    ```bash
    kubectl -n argocd patch secret argocd-notifications-secret --type=json -p '[{"op":"remove","path":"/data/github-appID"},{"op":"remove","path":"/data/github-installationID"},{"op":"remove","path":"/data/github-privateKey"}]'
