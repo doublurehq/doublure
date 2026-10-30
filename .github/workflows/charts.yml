@@ -130,6 +130,15 @@ jobs:
             printf 'got:\n%s\nwant:\n%s\n' "$got" "$want"
             exit 1
           fi
+          got=$(echo "$out" | yq -N 'select(.kind == "Application") | .metadata.name + "=" + .metadata.annotations["preview.doublure.dev/host"]')
+          want='feature-pricing-backend-1=backend-1-feature-pricing.127.0.0.1.nip.io
+          feature-pricing-backend-2=
+          feature-pricing-front=front-feature-pricing.127.0.0.1.nip.io'
+          if [ "$got" != "$want" ]; then
+            echo "::error::unexpected preview.doublure.dev/host annotations"
+            printf 'got:\n%s\nwant:\n%s\n' "$got" "$want"
+            exit 1
+          fi
 
       - name: Render preview-env with serviceCharts overrides
         run: |

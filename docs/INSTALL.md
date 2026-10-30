@@ -146,6 +146,60 @@ Applying it while pinned previews exist produces one-off spin-up samples for the
 
 Check: `doublure_argocd_events_total` increases after the next labeled PR. Without Helm, see the file's comments. To remove the setup later, revert the Argo CD release without the file, then delete the token, which Helm leaves in the Secret: `kubectl -n argocd patch secret argocd-notifications-secret --type=json -p '[{"op":"remove","path":"/data/doublure-webhook-token"}]'`. Details: ARCHITECTURE [Spin-up endpoint](ARCHITECTURE.md#spin-up-endpoint).
 
+### Preview deployments on GitHub (optional)
+
+To show each pinned preview service on its PR as a GitHub deployment (with a "View deployment" button, and a `deployment_status` event for anything that waits on it), Argo CD's notifications controller posts GitHub Deployments when the service's Application is synced and Healthy. Argo CD decides health, not doublure. It requires [Spin-up time](#spin-up-time-optional) and `preview-env` 0.5.0 or later.
+
+Create a second GitHub App, for Argo CD:
+
+- No webhook.
+- Repository permissions: Deployments Read and write, Metadata Read.
+- Install it on every service repo, under one installation (one owner): Argo CD takes a single installation ID. Note the App ID, the installation ID, and generate a private key (`.pem`).
+
+Then apply [`examples/argocd/github-deployments-values.yaml`](../examples/argocd/github-deployments-values.yaml) to your Argo CD release. The file order matters: `github-deployments-values.yaml` must come after `notifications-values.yaml`, because it carries the full `subscriptions` list and Helm replaces lists.
+
+```bash
+helm upgrade argocd argo/argo-cd -n argocd --version <your installed argo-cd chart version> \
+  --reuse-values -f notifications-values.yaml -f github-deployments-values.yaml \
+  --set-string notifications.secret.items.github-appID="$ARGOCD_GITHUB_APP_ID" \
+  --set-string notifications.secret.items.github-installationID="$ARGOCD_GITHUB_INSTALLATION_ID" \
+  --set-file notifications.secret.items.github-privateKey=<path to the App's .pem>
+```
+
+On the PR, each pinned service that goes Healthy at the PR head SHA appears as a deployment to the environment `preview-<slug>-<service>`, state `success`, with `environment_url` set to `https://<service host>/`. When the service's Application is deleted, the deployment is marked `inactive`. The file uses `https://`; change both `environmentURL` lines to `http://` if your previews run with `preview.tls: false`.
+
+Limitations:
+
+1. `inactive` on delete is best effort. It can also create an extra `inactive` deployment for a SHA that never went Healthy, while the earlier `success` stays.
+2. A PR that leaves a surviving preview keeps its last `success`, because its Application is updated, not deleted.
+3. Failed notifications are not retried.
+4. Applying the config posts `success` for every already-Healthy pinned Application.
+5. Environments accumulate on the service repos; delete them by hand.
+6. The URL is the host root; the expose path is not applied.
+7. One App installation covers all service repos.
+8. For a pinned service with no host (not in `expose`, e.g. `postgres`), `environment_url` is sent as `""`. Whether GitHub accepts that is not verified; the notifications controller log shows the result.
+
+Check: the PR shows the deployment, and `kubectl -n argocd logs deploy/argocd-notifications-controller` has no `github` errors. Without Helm, see the file's comments. Details: ARCHITECTURE [Preview deployments on GitHub](ARCHITECTURE.md#preview-deployments-on-github).
+
+To remove the setup later:
+
+1. Re-run the [Spin-up time](#spin-up-time-optional) `helm upgrade` with `-f notifications-values.yaml`, setting the three secret items to `null` so they leave the release values:
+
+   ```bash
+   helm upgrade argocd argo/argo-cd -n argocd --version <your installed argo-cd chart version> \
+     --reuse-values -f notifications-values.yaml \
+     --set notifications.secret.items.github-appID=null \
+     --set notifications.secret.items.github-installationID=null \
+     --set notifications.secret.items.github-privateKey=null
+   ```
+
+   This restores the single-entry `subscriptions` list. `service.github` and the `template.doublure-preview-*` and `trigger.on-preview-*` keys stay in the release: they are maps, so `--reuse-values` keeps them, but nothing subscribes to them.
+2. Helm no longer renders these items, but removing a `stringData` key does not delete it from the live Secret's `data`, so delete them:
+
+   ```bash
+   kubectl -n argocd patch secret argocd-notifications-secret --type=json -p '[{"op":"remove","path":"/data/github-appID"},{"op":"remove","path":"/data/github-installationID"},{"op":"remove","path":"/data/github-privateKey"}]'
+   ```
+
 ### Monitoring (optional)
 
 With the Prometheus Operator (e.g. kube-prometheus-stack), add to the `helm install` (or a `helm upgrade --reuse-values`):
