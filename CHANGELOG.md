@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/doublurehq/doublure/compare/v0.13.0...v0.14.0) (2026-10-30)
+
+
+### Features
+
+* post preview deployments on github from argo cd ([#53](https://github.com/doublurehq/doublure/issues/53)) ([d98d676](https://github.com/doublurehq/doublure/commit/d98d67639fd0606b86d57ffc1be7735810a1b42f))
+
 ## [0.13.0](https://github.com/doublurehq/doublure/compare/v0.12.0...v0.13.0) (2026-10-29)
 
 
