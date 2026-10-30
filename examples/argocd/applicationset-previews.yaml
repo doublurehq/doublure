@@ -24,7 +24,7 @@ spec:
           targetRevision: HEAD
           ref: values
         - repoURL: oci://ghcr.io/doublurehq/charts/preview-env
-          targetRevision: 0.4.1
+          targetRevision: 0.5.0
           path: "."
           helm:
             releaseName: "{{ .path.basename }}"

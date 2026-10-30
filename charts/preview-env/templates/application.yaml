@@ -29,6 +29,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
     preview.doublure.dev/vcs.ref.revision: {{ .commitSha | default "" | quote }}
+    preview.doublure.dev/host: {{ .host | default "" | quote }}
     {{- if .metadata }}
     preview.doublure.dev/pr-author: {{ index .metadata "pr-author" | quote }}
     preview.doublure.dev/pr-url: {{ index .metadata "pr-url" | quote }}
